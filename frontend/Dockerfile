@@ -12,6 +12,10 @@ FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+
+# Next.js drastically needs this baked at build time for the client bundles
+ENV NEXT_PUBLIC_API_URL="https://api.journalslibrary.com"
+
 RUN npm run build
 
 # Production image, copy all the files and run next

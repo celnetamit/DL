@@ -15,6 +15,7 @@ import (
   "lms-backend/internal/services"
 
   "github.com/gin-gonic/gin"
+  "golang.org/x/crypto/bcrypt"
 )
 
 func main() {
@@ -24,7 +25,7 @@ func main() {
   if os.Getenv("AUTO_MIGRATE") != "false" {
     if err := database.AutoMigrate(
       &models.Institution{},
-      // &models.User{},
+      &models.User{},
       &models.Role{},
       &models.Subscription{},
       &models.Payment{},
@@ -40,6 +41,22 @@ func main() {
     ); err != nil {
       log.Fatalf("failed to migrate: %v", err)
     }
+  }
+
+  // Seed default admin if missing
+  var adminCount int64
+  database.Model(&models.User{}).Where("email = ?", "admin@example.com").Count(&adminCount)
+  if adminCount == 0 {
+    hash, _ := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
+    database.Create(&models.User{
+      Email:     "admin@example.com",
+      Password:  string(hash),
+      FirstName: "Super",
+      LastName:  "Admin",
+      Role:      "super_admin",
+      Status:    "active",
+    })
+    log.Println("Seeded default super_admin account: admin@example.com / admin123")
   }
 
   handler := handlers.Handler{
