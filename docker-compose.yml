@@ -31,7 +31,7 @@ services:
       - RAZORPAY_WEBHOOK_SECRET=${RAZORPAY_WEBHOOK_SECRET}
       - AI_ENGINE_URL=http://ai-engine:8000
     ports:
-      - "8080:8080"
+      - "8050:8080"
     restart: always
 
   ai-engine:
