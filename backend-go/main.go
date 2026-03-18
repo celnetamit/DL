@@ -47,14 +47,16 @@ func main() {
   var adminCount int64
   database.Model(&models.User{}).Where("email = ?", "admin@example.com").Count(&adminCount)
   if adminCount == 0 {
+    var role models.Role
+    database.Where("name = ?", "super_admin").FirstOrCreate(&role, models.Role{Name: "super_admin"})
+
     hash, _ := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
     database.Create(&models.User{
-      Email:     "admin@example.com",
-      Password:  string(hash),
-      FirstName: "Super",
-      LastName:  "Admin",
-      Role:      "super_admin",
-      Status:    "active",
+      Email:        "admin@example.com",
+      PasswordHash: string(hash),
+      FullName:     "Super Admin",
+      Status:       "active",
+      Roles:        []models.Role{role},
     })
     log.Println("Seeded default super_admin account: admin@example.com / admin123")
   }
