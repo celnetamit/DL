@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-start: #0b1120;
+  --bg-end: #12233f;
+}
+
+body {
+  background: radial-gradient(circle at top, rgba(255, 106, 61, 0.18), transparent 45%),
+    linear-gradient(135deg, var(--bg-start), var(--bg-end));
+  color: #f4ede4;
+  min-height: 100vh;
+  font-family: var(--font-plex), ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+.glass {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
