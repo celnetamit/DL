@@ -31,7 +31,7 @@ services:
       - RAZORPAY_WEBHOOK_SECRET=${RAZORPAY_WEBHOOK_SECRET}
       - AI_ENGINE_URL=http://ai-engine:8000
     ports:
-      - "8050:8080"
+      - "8080:8080"
     restart: always
 
   ai-engine:
@@ -41,7 +41,7 @@ services:
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
     ports:
-      - "8000:8000"
+      - "8050:8000"
     restart: always
 
   frontend:
