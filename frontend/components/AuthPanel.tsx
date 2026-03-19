@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useAuth } from "@/lib/auth";
 import { useRouter, useSearchParams } from "next/navigation";
 
-export default function AuthPanel() {
+function AuthPanelInner() {
   const { token, user, loading, login, register, logout, loginWithGoogle } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -154,5 +154,13 @@ export default function AuthPanel() {
         Continue with Google
       </button>
     </div>
+  );
+}
+
+export default function AuthPanel() {
+  return (
+    <Suspense fallback={<div className="glass rounded-2xl p-6">Loading authentication...</div>}>
+      <AuthPanelInner />
+    </Suspense>
   );
 }

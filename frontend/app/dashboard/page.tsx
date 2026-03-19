@@ -1,5 +1,8 @@
 "use client";
 
+// This page uses client-only hooks — must not be statically pre-rendered
+export const dynamic = "force-dynamic";
+
 import Link from "next/link";
 import AuthPanel from "@/components/AuthPanel";
 import { useAuth } from "@/lib/auth";
