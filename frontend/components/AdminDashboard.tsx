@@ -262,7 +262,10 @@ export default function AdminDashboard() {
 
   const handleExport = () => {
     if (currentItems.length === 0) return;
-    const headers = ["id", "title", "status", "source_url", ...category.fields.map(f => f.name)];
+    const baseHeaders = ["id", "title", "status", "source_url"];
+    const categoryFieldNames = category.fields.map(f => f.name).filter(n => !baseHeaders.includes(n));
+    const headers = [...baseHeaders, ...categoryFieldNames];
+    
     const csvContent = [
       headers.join(","),
       ...currentItems.map(item => headers.map(h => `"${(item[h] || "").toString().replace(/"/g, '""')}"`).join(","))
@@ -277,6 +280,30 @@ export default function AdminDashboard() {
     document.body.removeChild(a);
   };
 
+  const parseCSVLine = (line: string): string[] => {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          current += '"';
+          i++; // skip escaped quote
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        result.push(current);
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    result.push(current);
+    return result.map(v => v.trim());
+  };
+
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!token || !e.target.files?.length) return;
     const file = e.target.files[0];
@@ -284,22 +311,41 @@ export default function AdminDashboard() {
 
     reader.onload = async (event) => {
       const csv = event.target?.result as string;
-      const lines = csv.split("\n").filter(l => l.trim().length > 0);
+      const lines = csv.split(/\r?\n/).filter(l => l.trim().length > 0);
       if (lines.length < 2) return;
 
-      const headers = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, ''));
+      const headers = parseCSVLine(lines[0]);
       let imports = 0;
       setLoading(true);
 
       for (let i = 1; i < lines.length; i++) {
-        // basic csv split ignoring commas in quotes
-        const match = lines[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
-        if (!match) continue;
-        const values = match.map(v => v.trim().replace(/^"|"$/g, '').replace(/""/g, '"'));
+        const values = parseCSVLine(lines[i]);
+        if (values.length === 0 || (values.length === 1 && values[0] === "")) continue;
+        
         const rowData: Record<string, string> = {};
-        headers.forEach((h, idx) => { rowData[h] = values[idx] || ""; });
+        headers.forEach((h, idx) => {
+          const cleanH = h.replace(/^"|"$/g, '').replace(/^\uFEFF/, '');
+          const val = values[idx] || "";
+          if (!rowData[cleanH]) {
+            rowData[cleanH] = val;
+          } else if (val) {
+            rowData[cleanH] = val; // Only overwrite if the new duplicate column actually has a value
+          }
+        });
 
-        const { id, title, status, source_url, ...metadata } = rowData;
+        // The id column might have imported with weird leading characters like @id if user edited
+        const idKey = Object.keys(rowData).find(k => k === 'id' || k === '@id') || 'id';
+        const id = rowData[idKey];
+        
+        const { title, status, source_url, ...rawMetadata } = rowData;
+        delete rawMetadata[idKey];
+        
+        // Remove empty keys from metadata
+        const metadata: Record<string, string> = {};
+        for (const k in rawMetadata) {
+          if (k) metadata[k] = rawMetadata[k];
+        }
+
         const payload = {
           type: category.key,
           title: title || "Imported Record",
