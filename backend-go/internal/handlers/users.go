@@ -40,6 +40,10 @@ func (h *Handler) UpdateMe(c *gin.Context) {
   }
 
   utils.JSON(c, http.StatusOK, "profile updated", gin.H{"full_name": req.FullName})
+
+  // Audit Log
+  uIDStr := userID.(string)
+  h.LogActivity(c, &uIDStr, "UPDATE_PROFILE", "USER", uIDStr, "User updated their own profile")
 }
 
 // ── Admin: User Management ────────────────────────────────────────────────────
@@ -98,6 +102,13 @@ func (h *Handler) UpdateUserRole(c *gin.Context) {
   // Replace all roles with the single new one
   h.DB.Model(&user).Association("Roles").Replace(&role)
   utils.JSON(c, http.StatusOK, "role updated", gin.H{"user_id": userID, "role": req.Role})
+
+  // Audit Log
+  adminID, _ := c.Get("user_id")
+  if adminID != nil {
+    adminIDStr := adminID.(string)
+    h.LogActivity(c, &adminIDStr, "UPDATE_USER_ROLE", "USER", userID, "Admin updated user role to "+req.Role)
+  }
 }
 
 // PUT /users/:id/status  body: {"status":"active"} or {"status":"inactive"}
@@ -118,5 +129,12 @@ func (h *Handler) UpdateUserStatus(c *gin.Context) {
   }
 
   utils.JSON(c, http.StatusOK, "status updated", gin.H{"user_id": userID, "status": req.Status})
+
+  // Audit Log
+  adminID, _ := c.Get("user_id")
+  if adminID != nil {
+    adminIDStr := adminID.(string)
+    h.LogActivity(c, &adminIDStr, "UPDATE_USER_STATUS", "USER", userID, "Admin updated user status to "+req.Status)
+  }
 }
 

@@ -3,6 +3,8 @@ package handlers
 import (
 	"net/http"
 
+	"strconv"
+
 	"lms-backend/internal/models"
 	"lms-backend/internal/utils"
 
@@ -110,6 +112,8 @@ func (h *Handler) GetProductContents(c *gin.Context) {
 	}
 
 	baseQuery := h.DB.Model(&models.Content{})
+	
+	// Apply filters based on product tier
 
 	switch product.Tier {
 	case "content":
@@ -134,8 +138,25 @@ func (h *Handler) GetProductContents(c *gin.Context) {
 		baseQuery = baseQuery.Where("type IN ?", []string(product.ContentTypes))
 	}
 
+	contentType := c.Query("type")
+	if contentType != "" {
+		baseQuery = baseQuery.Where("type = ?", contentType)
+	}
+
+	// Pagination
+	var total int64
+	baseQuery.Count(&total)
+
+	pageStr := c.DefaultQuery("page", "1")
+	limitStr := c.DefaultQuery("limit", "10")
+	page, _ := strconv.Atoi(pageStr)
+	limit, _ := strconv.Atoi(limitStr)
+	if page < 1 { page = 1 }
+	if limit < 1 { limit = 20 }
+	offset := (page - 1) * limit
+
 	var baseItems []models.Content
-	if err := baseQuery.Order("type, created_at desc").Find(&baseItems).Error; err != nil {
+	if err := baseQuery.Order("created_at desc").Offset(offset).Limit(limit).Find(&baseItems).Error; err != nil {
 		utils.JSON(c, http.StatusInternalServerError, "failed to fetch contents", nil)
 		return
 	}
@@ -159,5 +180,8 @@ func (h *Handler) GetProductContents(c *gin.Context) {
 	utils.JSON(c, http.StatusOK, "product contents", gin.H{
 		"product": product,
 		"modules": modules,
+		"total":   total,
+		"page":    page,
+		"limit":   limit,
 	})
 }

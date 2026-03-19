@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { IBM_Plex_Sans, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
+import Footer from "@/components/Footer";
+import ConsentBanner from "@/components/ConsentBanner";
 
 const plex = IBM_Plex_Sans({
   subsets: ["latin"],
@@ -27,9 +29,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${plex.variable} ${space.variable} font-sans`}>
+      <body className={`${plex.variable} ${space.variable} font-sans bg-midnight text-dune`}>
         <Navbar />
         <div className="min-h-[calc(100vh-56px)]">{children}</div>
+        <ConsentBanner />
+        <Footer />
       </body>
     </html>
   );

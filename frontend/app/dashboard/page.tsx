@@ -5,9 +5,12 @@ import AuthPanel from "@/components/AuthPanel";
 import { useAuth } from "@/lib/auth";
 import { getMySubscriptions, apiFetch } from "@/lib/api";
 import { useEffect, useState } from "react";
+import { useCompliance } from "@/hooks/useCompliance";
+import { Download, Trash2, ShieldCheck } from "lucide-react";
 
 export default function DashboardPage() {
   const { token, user } = useAuth();
+  const { exportData, deleteAccount } = useCompliance();
   const [subs, setSubs] = useState<any[]>([]);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
 
@@ -142,6 +145,43 @@ export default function DashboardPage() {
           
           <div className="flex flex-col gap-6">
             <AuthPanel />
+            
+            <div className="glass rounded-2xl p-6 border-l-4 border-l-ember/30">
+              <div className="flex items-center gap-2 mb-4">
+                <ShieldCheck className="w-5 h-5 text-ember" />
+                <h3 className="font-[var(--font-space)] text-xl">Privacy & Data</h3>
+              </div>
+              <p className="text-sm text-dune/70 mb-6">
+                Exercise your rights under <span className="text-dune font-semibold">DPDP Act 2023</span>. Manage your personal data portability and account erasure.
+              </p>
+              
+              <div className="flex flex-col gap-3">
+                <button 
+                  onClick={exportData}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-midnight/40 hover:bg-midnight/60 border border-dune/10 rounded-xl transition-all group"
+                >
+                  <div className="flex items-center gap-3">
+                    <Download className="w-4 h-4 text-dune/40 group-hover:text-ember transition-colors" />
+                    <span className="text-sm font-medium">Export My Data</span>
+                  </div>
+                  <span className="text-[10px] uppercase tracking-tighter text-dune/30">JSON Format</span>
+                </button>
+
+                <button 
+                  onClick={deleteAccount}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-red-500/5 hover:bg-red-500/10 border border-red-500/20 rounded-xl transition-all group"
+                >
+                  <div className="flex items-center gap-3">
+                    <Trash2 className="w-4 h-4 text-red-500/40 group-hover:text-red-500 transition-colors" />
+                    <span className="text-sm font-medium text-red-500/80 group-hover:text-red-500">Delete Account</span>
+                  </div>
+                </button>
+              </div>
+              
+              <p className="mt-6 text-[10px] text-dune/40 text-center italic">
+                Deletions are permanent and take up to 24 hours to propagate across all systems.
+              </p>
+            </div>
             
             <div className="glass rounded-2xl p-6">
               <h3 className="font-[var(--font-space)] text-xl mb-4 text-dune/50">Need Help?</h3>

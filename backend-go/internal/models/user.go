@@ -16,6 +16,10 @@ type User struct {
   CreatedAt     time.Time  `json:"created_at"`
   UpdatedAt     time.Time  `json:"updated_at"`
   Roles         []Role     `gorm:"many2many:user_roles" json:"roles"`
+
+  // DPDP Compliance
+  ConsentGiven  bool       `gorm:"default:false" json:"consent_given"`
+  ConsentAt     *time.Time `json:"consent_at,omitempty"`
 }
 
 type Role struct {

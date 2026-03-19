@@ -1,10 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
+import { useRouter, useSearchParams } from "next/navigation";
 
 export default function AuthPanel() {
   const { token, user, loading, login, register, logout, loginWithGoogle } = useAuth();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirect = searchParams.get("redirect");
+  
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -22,9 +27,15 @@ export default function AuthPanel() {
       if (mode === "login") {
         await login(email, password);
         setMessage("Logged in successfully.");
+        if (redirect) {
+          router.push(redirect);
+        }
       } else {
         await register(email, password, fullName, role, code);
         setMessage("Registered and logged in.");
+        if (redirect) {
+          router.push(redirect);
+        }
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Something went wrong");

@@ -14,14 +14,18 @@ import (
   "lms-backend/internal/models"
   "lms-backend/internal/services"
 
-  "github.com/gin-gonic/gin"
-  "golang.org/x/crypto/bcrypt"
+  	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
+	"golang.org/x/crypto/bcrypt"
   "golang.org/x/oauth2"
   "golang.org/x/oauth2/google"
 )
 
 func main() {
-  cfg := config.Load()
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found")
+	}
+	cfg := config.Load()
   database := db.Connect(cfg.DatabaseURL)
 
   if os.Getenv("AUTO_MIGRATE") != "false" {
@@ -40,6 +44,8 @@ func main() {
       &models.Subdomain{},
       &models.Product{},
       &models.AppSetting{},
+      &models.AuditLog{},
+      &models.ConsentHistory{},
     ); err != nil {
       log.Fatalf("failed to migrate: %v", err)
     }
@@ -193,6 +199,12 @@ func main() {
       // Step 21 – API Settings management
       protected.GET("/settings", middleware.RequireRole("super_admin"), handler.ListSettings)
       protected.POST("/settings", middleware.RequireRole("super_admin"), handler.BulkUpsertSettings)
+
+      // Compliance & DPDP act
+      protected.POST("/compliance/consent", handler.GiveConsent)
+      protected.GET("/compliance/export", handler.ExportMyData)
+      protected.DELETE("/compliance/account", handler.DeleteMyAccount)
+      protected.GET("/compliance/audit-logs", middleware.RequireRole("super_admin"), handler.GetAuditLogs)
     }
   }
 

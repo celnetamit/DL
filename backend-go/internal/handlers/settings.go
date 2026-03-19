@@ -108,6 +108,13 @@ func (h *Handler) BulkUpsertSettings(c *gin.Context) {
 	}
 
 	utils.JSON(c, http.StatusOK, "settings saved", nil)
+
+	// Audit Log
+	uID, _ := c.Get("user_id")
+	if uID != nil {
+		uIDStr := uID.(string)
+		h.LogActivity(c, &uIDStr, "UPDATE_SETTINGS", "SETTINGS", "SYSTEM", "Admin updated bulk settings")
+	}
 }
 
 // GetSettingValue — internal helper used by other handlers to read a setting

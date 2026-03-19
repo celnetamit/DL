@@ -57,7 +57,7 @@ export default function PricingPage() {
   const handleCheckout = async (plan: Product) => {
     if (!token) {
       alert("Please login first to make a purchase.");
-      router.push("/auth/login?redirect=/pricing");
+      router.push("/dashboard?redirect=/pricing");
       return;
     }
     setProcessingPlan(plan.id);

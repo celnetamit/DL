@@ -99,6 +99,9 @@ func (h *Handler) Register(c *gin.Context) {
   }
 
   utils.JSON(c, http.StatusCreated, "registered", gin.H{"token": token, "user": user})
+
+  // Audit Log
+  h.LogActivity(c, &user.ID, "REGISTER", "USER", user.ID, "New user registered")
 }
 
 func (h *Handler) Login(c *gin.Context) {
@@ -110,6 +113,7 @@ func (h *Handler) Login(c *gin.Context) {
 
   var user models.User
   if err := h.DB.Preload("Roles").Where("email = ?", req.Email).First(&user).Error; err != nil {
+    h.LogActivity(c, nil, "LOGIN_FAILURE", "USER", req.Email, "User not found")
     utils.JSON(c, http.StatusUnauthorized, "invalid credentials", nil)
     return
   }
@@ -119,6 +123,7 @@ func (h *Handler) Login(c *gin.Context) {
     return
   }
   if err := bcrypt.CompareHashAndPassword([]byte(*user.PasswordHash), []byte(req.Password)); err != nil {
+    h.LogActivity(c, &user.ID, "LOGIN_FAILURE", "USER", user.ID, "Invalid password")
     utils.JSON(c, http.StatusUnauthorized, "invalid credentials", nil)
     return
   }
@@ -141,6 +146,9 @@ func (h *Handler) Login(c *gin.Context) {
   }
 
   utils.JSON(c, http.StatusOK, "logged in", gin.H{"token": token, "user": user})
+
+  // Audit Log
+  h.LogActivity(c, &user.ID, "LOGIN_SUCCESS", "USER", user.ID, "User logged in via password")
 }
 
 func (h *Handler) createToken(userID string, roles []string) (string, error) {

@@ -99,6 +99,7 @@ func (h *Handler) GoogleCallback(c *gin.Context) {
 				utils.JSON(c, http.StatusInternalServerError, "failed to create user", nil)
 				return
 			}
+			h.LogActivity(c, &user.ID, "GOOGLE_REGISTER", "USER", user.ID, "New user registered via Google")
 			// Reload with roles
 			h.DB.Preload("Roles").First(&user, "id = ?", user.ID)
 		} else {
@@ -133,5 +134,8 @@ func (h *Handler) GoogleCallback(c *gin.Context) {
 
 	// Redirect to frontend callback page with the token in query param
 	redirectURL := fmt.Sprintf("%s/auth/callback?token=%s", h.Config.AppBaseURL, jwt)
+	
+	h.LogActivity(c, &user.ID, "LOGIN_SUCCESS", "USER", user.ID, "User logged in via Google")
+	
 	c.Redirect(http.StatusTemporaryRedirect, redirectURL)
 }

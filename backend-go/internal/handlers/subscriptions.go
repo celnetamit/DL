@@ -26,6 +26,15 @@ type createSubscriptionRequest struct {
   CustomerName  string `json:"customer_name"`
   CustomerEmail string `json:"customer_email"`
 }
+  
+func (h *Handler) getRazorpay() services.RazorpayService {
+  keyID := h.GetSettingValue("RAZORPAY_KEY_ID", h.Razorpay.KeyID)
+  keySecret := h.GetSettingValue("RAZORPAY_KEY_SECRET", h.Razorpay.KeySecret)
+  return services.RazorpayService{
+    KeyID:     keyID,
+    KeySecret: keySecret,
+  }
+}
 
 func (h *Handler) CreateOrder(c *gin.Context) {
   userID, _ := c.Get("user_id")
@@ -40,8 +49,9 @@ func (h *Handler) CreateOrder(c *gin.Context) {
   if currency == "" {
     currency = "INR"
   }
-
-  order, err := h.Razorpay.CreateOrder(req.Amount, currency, "lms_order")
+  
+  razorpay := h.getRazorpay()
+  order, err := razorpay.CreateOrder(req.Amount, currency, "lms_order")
   if err != nil {
     utils.JSON(c, http.StatusBadRequest, "failed to create order", gin.H{"error": err.Error()})
     return
@@ -95,9 +105,10 @@ func (h *Handler) CreateSubscription(c *gin.Context) {
     return
   }
 
+  razorpay := h.getRazorpay()
   customerID := req.CustomerID
   if customerID == "" && req.CustomerEmail != "" {
-    customer, err := h.Razorpay.CreateCustomer(req.CustomerName, req.CustomerEmail)
+    customer, err := razorpay.CreateCustomer(req.CustomerName, req.CustomerEmail)
     if err != nil {
       utils.JSON(c, http.StatusBadRequest, "failed to create customer", gin.H{"error": err.Error()})
       return
@@ -107,7 +118,7 @@ func (h *Handler) CreateSubscription(c *gin.Context) {
     }
   }
 
-  subscription, err := h.Razorpay.CreateSubscription(req.PlanID, req.TotalCount, customerID)
+  subscription, err := razorpay.CreateSubscription(req.PlanID, req.TotalCount, customerID)
   if err != nil {
     utils.JSON(c, http.StatusBadRequest, "failed to create subscription", gin.H{"error": err.Error()})
     return
@@ -285,7 +296,8 @@ func (h *Handler) CancelSubscription(c *gin.Context) {
 
   if sub.RazorpaySubscriptionID != nil && *sub.RazorpaySubscriptionID != "" {
     // Only call Razorpay if it was actually created there
-    if _, err := h.Razorpay.CancelSubscription(*sub.RazorpaySubscriptionID); err != nil {
+    razorpay := h.getRazorpay()
+    if _, err := razorpay.CancelSubscription(*sub.RazorpaySubscriptionID); err != nil {
       utils.JSON(c, http.StatusInternalServerError, "failed to cancel razorpay subscription", gin.H{"error": err.Error()})
       return
     }
