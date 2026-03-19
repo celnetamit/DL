@@ -1,6 +1,6 @@
 module lms-backend
 
-go 1.25.0
+go 1.23.0
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
@@ -8,7 +8,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/lib/pq v1.11.2
 	golang.org/x/crypto v0.23.0
-	golang.org/x/oauth2 v0.36.0
+	golang.org/x/oauth2 v0.24.0
 	gorm.io/datatypes v1.2.7
 	gorm.io/driver/postgres v1.5.6
 	gorm.io/gorm v1.30.0
