@@ -16,6 +16,8 @@ import (
 
   "github.com/gin-gonic/gin"
   "golang.org/x/crypto/bcrypt"
+  "golang.org/x/oauth2"
+  "golang.org/x/oauth2/google"
 )
 
 func main() {
@@ -51,14 +53,39 @@ func main() {
     database.Where("name = ?", "super_admin").FirstOrCreate(&role, models.Role{Name: "super_admin"})
 
     hash, _ := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
+    hashStr := string(hash)
     database.Create(&models.User{
       Email:        "admin@example.com",
-      PasswordHash: string(hash),
+      PasswordHash: &hashStr,
       FullName:     "Super Admin",
       Status:       "active",
       Roles:        []models.Role{role},
     })
     log.Println("Seeded default super_admin account: admin@example.com / admin123")
+  }
+
+  // Seed Google super-admins (no password – Google login only)
+  var superAdminRole models.Role
+  database.Where("name = ?", "super_admin").FirstOrCreate(&superAdminRole, models.Role{Name: "super_admin"})
+
+  googleSuperAdmins := []struct{ email, name string }{
+    {"puneet.mehrotra@celnet.in", "Puneet Mehrotra"},
+    {"amit@conwiz.in", "Amit"},
+    {"manish@celnet.in", "Manish"},
+  }
+  for _, sa := range googleSuperAdmins {
+    var count int64
+    database.Model(&models.User{}).Where("email = ?", sa.email).Count(&count)
+    if count == 0 {
+      u := models.User{
+        Email:    sa.email,
+        FullName: sa.name,
+        Status:   "active",
+        Roles:    []models.Role{superAdminRole},
+      }
+      database.Create(&u)
+      log.Printf("Seeded super_admin: %s", sa.email)
+    }
   }
 
   handler := handlers.Handler{
@@ -67,6 +94,16 @@ func main() {
     Razorpay: services.RazorpayService{
       KeyID:     cfg.RazorpayKeyID,
       KeySecret: cfg.RazorpayKeySecret,
+    },
+    GoogleOAuth: &oauth2.Config{
+      ClientID:     cfg.GoogleClientID,
+      ClientSecret: cfg.GoogleClientSecret,
+      RedirectURL:  cfg.GoogleRedirectURL,
+      Scopes: []string{
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/userinfo.profile",
+      },
+      Endpoint: google.Endpoint,
     },
   }
 
@@ -80,6 +117,8 @@ func main() {
   {
     api.POST("/auth/register", middleware.RateLimit(5, 10*time.Minute), handler.Register)
     api.POST("/auth/login", middleware.RateLimit(5, 5*time.Minute), handler.Login)
+    api.GET("/auth/google", handler.GoogleLogin)
+    api.GET("/auth/google/callback", handler.GoogleCallback)
     api.POST("/subscriptions/webhook", handler.RazorpayWebhook)
 
     // Step 16 Public Routes

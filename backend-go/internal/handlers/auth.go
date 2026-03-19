@@ -1,6 +1,7 @@
 package handlers
 
 import (
+  "log"
   "net/http"
   "strings"
   "time"
@@ -45,9 +46,10 @@ func (h *Handler) Register(c *gin.Context) {
     return
   }
 
+  hashStr := string(passwordHash)
   user := models.User{
     Email:        req.Email,
-    PasswordHash: string(passwordHash),
+    PasswordHash: &hashStr,
     FullName:     req.FullName,
     Status:       "active",
   }
@@ -80,6 +82,7 @@ func (h *Handler) Register(c *gin.Context) {
   }
 
   if err := h.DB.Create(&user).Error; err != nil {
+    log.Printf("DB error creating user: %v", err)
     utils.JSON(c, http.StatusInternalServerError, "failed to create user", nil)
     return
   }
@@ -111,7 +114,11 @@ func (h *Handler) Login(c *gin.Context) {
     return
   }
 
-  if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
+  if user.PasswordHash == nil {
+    utils.JSON(c, http.StatusUnauthorized, "account uses Google sign-in, no password set", nil)
+    return
+  }
+  if err := bcrypt.CompareHashAndPassword([]byte(*user.PasswordHash), []byte(req.Password)); err != nil {
     utils.JSON(c, http.StatusUnauthorized, "invalid credentials", nil)
     return
   }

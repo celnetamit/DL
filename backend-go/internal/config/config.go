@@ -11,6 +11,9 @@ type Config struct {
   RazorpayWebhookSecret string
   AppBaseURL            string
   AIEngineURL           string
+  GoogleClientID        string
+  GoogleClientSecret    string
+  GoogleRedirectURL     string
 }
 
 func Load() Config {
@@ -23,6 +26,9 @@ func Load() Config {
     RazorpayWebhookSecret: getEnv("RAZORPAY_WEBHOOK_SECRET", ""),
     AppBaseURL:            getEnv("APP_BASE_URL", "http://localhost:3000"),
     AIEngineURL:           getEnv("AI_ENGINE_URL", "http://localhost:8000"),
+    GoogleClientID:        getEnv("GOOGLE_CLIENT_ID", ""),
+    GoogleClientSecret:    getEnv("GOOGLE_CLIENT_SECRET", ""),
+    GoogleRedirectURL:     getEnv("GOOGLE_REDIRECT_URL", "http://localhost:8080/api/v1/auth/google/callback"),
   }
 }
 

@@ -147,10 +147,11 @@ func (h *Handler) BulkInvite(c *gin.Context) {
 		}
 
 		defaultPass, _ := bcrypt.GenerateFromPassword([]byte("student123"), bcrypt.DefaultCost)
+		defaultPassStr := string(defaultPass)
 		user := models.User{
 			Email:         email,
 			FullName:      name,
-			PasswordHash:  string(defaultPass),
+			PasswordHash:  &defaultPassStr,
 			Status:        "active",
 			InstitutionID: &inst.ID,
 		}

@@ -5,6 +5,7 @@ import { loginUser, registerUser } from "./api";
 
 const TOKEN_KEY = "lms_token";
 const USER_KEY = "lms_user";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
 export type AuthUser = {
   id?: string;
@@ -12,6 +13,7 @@ export type AuthUser = {
   full_name?: string;
   roles?: { name: string }[];
   institution_id?: string;
+  avatar_url?: string;
 };
 
 export function useAuth() {
@@ -64,6 +66,41 @@ export function useAuth() {
     [saveSession],
   );
 
+  /** Redirect the browser to the backend Google OAuth initiation endpoint. */
+  const loginWithGoogle = useCallback(() => {
+    window.location.href = `${API_URL}/api/v1/auth/google`;
+  }, []);
+
+  /**
+   * Called by the /auth/callback page after the backend redirects back.
+   * Decodes the JWT minimally and fetches the full profile from /users/me.
+   */
+  const handleGoogleCallback = useCallback(
+    async (jwt: string) => {
+      try {
+        const parts = jwt.split(".");
+        if (parts.length !== 3) throw new Error("invalid token");
+        const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+        const partialUser: AuthUser = {
+          id: payload.sub,
+          roles: (payload.roles as string[]).map((r) => ({ name: r })),
+        };
+        const resp = await fetch(`${API_URL}/api/v1/users/me`, {
+          headers: { Authorization: `Bearer ${jwt}` },
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          saveSession(jwt, data.data ?? partialUser);
+        } else {
+          saveSession(jwt, partialUser);
+        }
+      } catch {
+        saveSession(jwt, {});
+      }
+    },
+    [saveSession],
+  );
+
   return {
     token,
     user,
@@ -71,5 +108,7 @@ export function useAuth() {
     login,
     register,
     logout,
+    loginWithGoogle,
+    handleGoogleCallback,
   };
 }
