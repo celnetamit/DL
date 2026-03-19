@@ -1,11 +1,10 @@
 import { Metadata } from "next";
-import HomeClient from "@/components/HomeClient";
 
 export const metadata: Metadata = {
   title: "Digital Library | Explore our Catalog",
   description: "Advanced digital library and learning platform. Explore journals, books, and articles in specialized domains.",
 };
 
-export default function HomePage() {
-  return <HomeClient />;
+export default function Layout({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
 }

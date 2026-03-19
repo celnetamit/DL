@@ -1,4 +1,10 @@
 import LegalPageLayout from "@/components/LegalPageLayout";
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Disclaimer | Digital Library",
+  description: "Legal disclaimers regarding our content, platform, and liability.",
+};
 
 export default function Disclaimer() {
   const sections = [

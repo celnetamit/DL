@@ -1,5 +1,11 @@
 import LegalPageLayout from "@/components/LegalPageLayout";
 import Link from "next/link";
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Privacy Policy | Digital Library",
+  description: "Our commitment to your privacy and data protection under DPDP Act 2023.",
+};
 
 export default function PrivacyPolicy() {
   const sections = [

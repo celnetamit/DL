@@ -19,10 +19,13 @@ func SecurityHeaders() gin.HandlerFunc {
 		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
 		
 		// Content Security Policy (Basic)
-		c.Header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' https://checkout.razorpay.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://api.razorpay.com;")
+		c.Header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' https://checkout.razorpay.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://api.razorpay.com https://checkout.razorpay.com;")
 
-		// Strict Transport Security (HSTS) - Only in HTTPS
-		// c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		// Strict Transport Security (HSTS) – enforced for all HTTPS deployments
+		c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+
+		// Restrict unused browser APIs
+		c.Header("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(self)")
 
 		c.Next()
 	}

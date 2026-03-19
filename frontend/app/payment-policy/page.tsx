@@ -1,4 +1,10 @@
 import LegalPageLayout from "@/components/LegalPageLayout";
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Payment and Cancellation Policy | Digital Library",
+  description: "Information regarding payments, subscriptions, and cancellations.",
+};
 
 export default function PaymentPolicy() {
   const sections = [

@@ -1,4 +1,10 @@
 import LegalPageLayout from "@/components/LegalPageLayout";
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Cookies Policy | Digital Library",
+  description: "Learn how we use cookies to improve your learning experience.",
+};
 
 export default function CookiesPolicy() {
   const sections = [

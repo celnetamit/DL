@@ -1,4 +1,10 @@
 import LegalPageLayout from "@/components/LegalPageLayout";
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Terms and Conditions | Digital Library",
+  description: "The rules, requirements, and legal conditions for using our platform.",
+};
 
 export default function TermsAndConditions() {
   const sections = [

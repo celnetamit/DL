@@ -10,6 +10,7 @@ node_modules/
 dist/
 build/
 npm-debug.log*
+tsconfig.tsbuildinfo
 
 # Python
 __pycache__/
@@ -21,7 +22,11 @@ pip-log.txt
 
 # Go
 /backend-go/main
+/backend-go/bin/
 *.exe
+
+# Log files
+*.log
 
 # Secrets and environment
 .env

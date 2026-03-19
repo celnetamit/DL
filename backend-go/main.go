@@ -25,6 +25,12 @@ func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found")
 	}
+
+	// Use release mode in production
+	if os.Getenv("GIN_MODE") == "release" {
+		gin.SetMode(gin.ReleaseMode)
+	}
+
 	cfg := config.Load()
   database := db.Connect(cfg.DatabaseURL)
 
@@ -51,23 +57,32 @@ func main() {
     }
   }
 
-  // Seed default admin if missing
+  // Seed default admin if missing (configurable via ADMIN_SEED_EMAIL / ADMIN_SEED_PASSWORD)
+  adminEmail := os.Getenv("ADMIN_SEED_EMAIL")
+  if adminEmail == "" {
+    adminEmail = "admin@example.com"
+  }
+  adminPassword := os.Getenv("ADMIN_SEED_PASSWORD")
+  if adminPassword == "" {
+    adminPassword = "admin123"
+  }
+
   var adminCount int64
-  database.Model(&models.User{}).Where("email = ?", "admin@example.com").Count(&adminCount)
+  database.Model(&models.User{}).Where("email = ?", adminEmail).Count(&adminCount)
   if adminCount == 0 {
     var role models.Role
     database.Where("name = ?", "super_admin").FirstOrCreate(&role, models.Role{Name: "super_admin"})
 
-    hash, _ := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
+    hash, _ := bcrypt.GenerateFromPassword([]byte(adminPassword), bcrypt.DefaultCost)
     hashStr := string(hash)
     database.Create(&models.User{
-      Email:        "admin@example.com",
+      Email:        adminEmail,
       PasswordHash: &hashStr,
       FullName:     "Super Admin",
       Status:       "active",
       Roles:        []models.Role{role},
     })
-    log.Println("Seeded default super_admin account: admin@example.com / admin123")
+    log.Printf("Seeded default super_admin account: %s", adminEmail)
   }
 
   // Seed Google super-admins (no password – Google login only)
