@@ -157,6 +157,14 @@ export default function AdminDashboard() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
 
+  const [importProgress, setImportProgress] = useState<{
+    isImporting: boolean;
+    total: number;
+    processed: number;
+    startTime: number;
+    etaSeconds: number | null;
+  } | null>(null);
+
   const category = useMemo(() => CATEGORIES.find((item) => item.key === activeKey)!, [activeKey]);
   const [formState, setFormState] = useState<Record<string, string>>(() => emptyForm(category.fields));
 
@@ -318,6 +326,16 @@ export default function AdminDashboard() {
       let imports = 0;
       setLoading(true);
 
+      const totalRows = lines.length - 1;
+      const startTime = Date.now();
+      setImportProgress({
+        isImporting: true,
+        total: totalRows,
+        processed: 0,
+        startTime: startTime,
+        etaSeconds: null
+      });
+
       for (let i = 1; i < lines.length; i++) {
         const values = parseCSVLine(lines[i]);
         if (values.length === 0 || (values.length === 1 && values[0] === "")) continue;
@@ -364,11 +382,18 @@ export default function AdminDashboard() {
         } catch (err) {
           console.error("Failed importing row", i, err);
         }
+
+        const elapsedSeconds = (Date.now() - startTime) / 1000;
+        const itemsPerSecond = i / elapsedSeconds;
+        const remainingItems = totalRows - i;
+        const etaSeconds = itemsPerSecond > 0 ? Math.round(remainingItems / itemsPerSecond) : null;
+        setImportProgress(prev => prev ? { ...prev, processed: i, etaSeconds } : null);
       }
       
       alert(`Import completed: ${imports} records processed.`);
       await loadData(category.key);
       setLoading(false);
+      setImportProgress(null);
     };
     reader.readAsText(file);
     e.target.value = ""; // reset input
@@ -404,7 +429,7 @@ export default function AdminDashboard() {
 
   return (
     <>
-      <section className="grid gap-6 md:grid-cols-3 mb-8">
+      <section className="grid gap-6 md:grid-cols-3 mb-8 min-w-0 w-full">
         <div className="glass rounded-2xl p-6 border border-dune/20">
           <p className="text-[10px] font-bold uppercase tracking-widest text-dune/60">Total Users</p>
           <p className="mt-4 font-[var(--font-space)] text-4xl font-semibold text-ember">{analytics.total_users}</p>
@@ -419,8 +444,8 @@ export default function AdminDashboard() {
         </div>
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
-        <aside className="glass rounded-2xl p-6">
+      <div className="grid gap-6 lg:grid-cols-[260px_1fr] min-w-0 w-full">
+        <aside className="glass rounded-2xl p-6 min-w-0">
         <div>
           <p className="text-xs uppercase tracking-[0.3em] text-dune/60">Admin Dashboard</p>
           <h2 className="mt-2 font-[var(--font-space)] text-2xl">Content Manager</h2>
@@ -442,7 +467,7 @@ export default function AdminDashboard() {
         </nav>
       </aside>
 
-      <section className="space-y-6">
+      <section className="space-y-6 min-w-0">
         <header className="glass rounded-2xl p-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
@@ -458,9 +483,27 @@ export default function AdminDashboard() {
           </div>
         </header>
 
-        <div className="grid gap-6">
-          <div className="glass rounded-2xl p-6">
-            <div className="flex items-center justify-between">
+        {importProgress && importProgress.isImporting && (
+          <div className="glass rounded-2xl p-6 border border-ember/30 bg-midnight/80">
+            <div className="flex justify-between text-sm mb-3 font-semibold text-ember">
+              <span>Importing Records... ({importProgress.processed} / {importProgress.total})</span>
+              <span>{importProgress.processed === 0 || importProgress.etaSeconds === null ? 'Calculating ETA...' : `ETA: ${importProgress.etaSeconds}s`}</span>
+            </div>
+            <div className="w-full bg-dune/10 rounded-full h-3 overflow-hidden shadow-inner">
+              <div 
+                className="bg-ember h-3 rounded-full transition-all duration-300 shadow-glow" 
+                style={{ width: `${Math.round((importProgress.processed / importProgress.total) * 100)}%` }}
+              ></div>
+            </div>
+            <div className="mt-3 text-right text-xs text-dune/60 font-[var(--font-space)]">
+              {Math.round((importProgress.processed / importProgress.total) * 100)}% Complete
+            </div>
+          </div>
+        )}
+
+        <div className="grid gap-6 min-w-0 w-full">
+          <div className="glass rounded-2xl p-6 min-w-0">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <h4 className="text-lg font-semibold">Existing Records</h4>
               <div className="flex items-center gap-3">
                 <input type="file" id="csv-upload" className="hidden" accept=".csv" onChange={handleImport} disabled={loading} />

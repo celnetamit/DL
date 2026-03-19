@@ -130,9 +130,9 @@ export default function ProductManagerPanel() {
   const activeSubdomains = selectedDomainObj ? selectedDomainObj.subdomains : [];
 
   return (
-    <div className="grid lg:grid-cols-[1fr_340px] gap-6 items-start">
+    <div className="grid lg:grid-cols-[1fr_340px] gap-6 items-start min-w-0">
       {/* ── Product List ── */}
-      <div className="glass rounded-2xl p-6">
+      <div className="glass rounded-2xl p-6 min-w-0">
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-lg font-[var(--font-space)]">Product Catalog</h3>
           <span className="text-xs text-dune/60">{products.length} registered</span>

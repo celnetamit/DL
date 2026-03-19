@@ -69,7 +69,7 @@ export default function PricingPage() {
         key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "rzp_test_change_me",
         amount: plan.price * 100, // Amount is in currency subunits. 
         currency: "INR",
-        name: "LMS Pro Checkout",
+        name: "Digital Library Pro Checkout",
         description: `Purchasing: ${plan.name}`,
         order_id: res.order.id, 
         handler: function (response: any) {
@@ -77,7 +77,7 @@ export default function PricingPage() {
              router.push("/dashboard");
         },
         prefill: {
-            name: "LMS User",
+            name: "Library User",
             email: user?.email || "",
         },
         theme: {

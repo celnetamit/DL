@@ -16,8 +16,8 @@ const space = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "Aether LMS",
-  description: "AI-powered learning management system for institutions",
+  title: "Digital Library",
+  description: "Advanced digital library and learning platform",
 };
 
 export default function RootLayout({

@@ -23,7 +23,7 @@ export default function Navbar() {
           href="/"
           className="font-[var(--font-space)] text-xl font-semibold tracking-tight"
         >
-          <span className="text-ember">A</span>ether LMS
+          <span className="text-ember">D</span>igital Library
         </Link>
 
         {/* Main nav links */}

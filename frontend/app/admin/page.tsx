@@ -18,8 +18,8 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<Tab>("Analytics");
 
   return (
-    <main className="min-h-screen px-6 py-10">
-      <div className="mx-auto flex max-w-7xl flex-col gap-6">
+    <main className="min-h-screen px-6 py-10 min-w-0 line-clamp-none">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 min-w-0">
         <header>
           <p className="text-xs uppercase tracking-[0.3em] text-ember">Admin View</p>
           <h1 className="font-[var(--font-space)] text-3xl">Content Operations</h1>

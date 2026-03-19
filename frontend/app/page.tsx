@@ -63,7 +63,7 @@ export default function HomePage() {
         
         {/* Hero Section */}
         <section className="text-center max-w-3xl mx-auto space-y-6">
-          <p className="text-sm uppercase tracking-[0.3em] text-ember">Aether LMS Platform</p>
+          <p className="text-sm uppercase tracking-[0.3em] text-ember">Digital Library Platform</p>
           <h1 className="text-4xl font-[var(--font-space)] font-semibold leading-tight sm:text-5xl">
             Explore the Digital Library
           </h1>

@@ -153,9 +153,9 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
   });
 
   return (
-    <div className="grid lg:grid-cols-[1fr_340px] gap-6 items-start">
+    <div className="grid lg:grid-cols-[1fr_340px] gap-6 items-start min-w-0">
       {/* ── Left: List ── */}
-      <div className="glass rounded-2xl p-6">
+      <div className="glass rounded-2xl p-6 min-w-0">
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
           <div>
