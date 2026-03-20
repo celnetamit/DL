@@ -173,6 +173,8 @@ func main() {
 
 			protected.GET("/analytics", middleware.RequireRole(authz.RoleSuperAdmin, authz.RoleSubscriptionManager, authz.RoleContentManager), handler.GetAdminAnalytics)
 			protected.GET("/ai/logs", middleware.RequireRole(authz.RoleSuperAdmin, authz.RoleSubscriptionManager, authz.RoleContentManager), handler.ListAIGenerationLogs)
+			protected.GET("/leads", middleware.RequireRole(authz.RoleSuperAdmin, authz.RoleSubscriptionManager), handler.ListLeadEvents)
+			protected.POST("/leads/:id/retry", middleware.RequireRole(authz.RoleSuperAdmin, authz.RoleSubscriptionManager), handler.RetryLeadEvent)
 			protected.POST("/courses", middleware.RequireRole(authz.RoleInstructor, authz.RoleContentManager, authz.RoleSuperAdmin), handler.CreateCourse)
 			protected.PUT("/courses/:course_id", middleware.RequireRole(authz.RoleInstructor, authz.RoleContentManager, authz.RoleSuperAdmin), handler.UpdateCourse)
 			protected.DELETE("/courses/:course_id", middleware.RequireRole(authz.RoleInstructor, authz.RoleContentManager, authz.RoleSuperAdmin), handler.DeleteCourse)

@@ -97,6 +97,103 @@ func (h *Handler) SubmitPurchaseLead(c *gin.Context) {
 	utils.JSON(c, statusCode, "lead submitted", responseData)
 }
 
+func (h *Handler) ListLeadEvents(c *gin.Context) {
+	statusFilter := strings.TrimSpace(c.Query("status"))
+	leadTypeFilter := strings.TrimSpace(c.Query("lead_type"))
+
+	var events []models.LeadEvent
+	query := h.DB.Order("created_at desc")
+	if statusFilter != "" {
+		query = query.Where("sync_status = ?", statusFilter)
+	}
+	if leadTypeFilter != "" {
+		query = query.Where("lead_type = ?", leadTypeFilter)
+	}
+
+	if err := query.Find(&events).Error; err != nil {
+		utils.JSON(c, http.StatusInternalServerError, "failed to fetch lead events", nil)
+		return
+	}
+
+	type leadOverview struct {
+		models.LeadEvent
+		UserEmail       string `json:"user_email"`
+		UserName        string `json:"user_name"`
+		InstitutionName string `json:"institution_name"`
+		ProductName     string `json:"product_name"`
+	}
+
+	enriched := make([]leadOverview, 0, len(events))
+	for _, event := range events {
+		row := leadOverview{LeadEvent: event}
+		if event.UserID != nil {
+			var user models.User
+			if err := h.DB.Select("email, full_name").First(&user, "id = ?", *event.UserID).Error; err == nil {
+				row.UserEmail = user.Email
+				row.UserName = user.FullName
+			}
+		}
+		if event.InstitutionID != nil && row.InstitutionName == "" {
+			var institution models.Institution
+			if err := h.DB.Select("name").First(&institution, "id = ?", *event.InstitutionID).Error; err == nil {
+				row.InstitutionName = institution.Name
+			}
+		}
+		if event.ProductID != nil && row.ProductName == "" {
+			var product models.Product
+			if err := h.DB.Select("name").First(&product, "id = ?", *event.ProductID).Error; err == nil {
+				row.ProductName = product.Name
+			}
+		}
+		enriched = append(enriched, row)
+	}
+
+	utils.JSON(c, http.StatusOK, "lead events", enriched)
+}
+
+func (h *Handler) RetryLeadEvent(c *gin.Context) {
+	leadID := c.Param("id")
+
+	var event models.LeadEvent
+	if err := h.DB.First(&event, "id = ?", leadID).Error; err != nil {
+		utils.JSON(c, http.StatusNotFound, "lead event not found", nil)
+		return
+	}
+
+	now := time.Now().UTC()
+	attempts := event.SyncAttemptCount + 1
+	responseBody, err := h.LeadWebhook.Send(event)
+	if err != nil {
+		errMessage := truncateLeadError(err.Error())
+		h.DB.Model(&models.LeadEvent{}).Where("id = ?", event.ID).Updates(map[string]interface{}{
+			"sync_status":        "failed",
+			"sync_attempt_count": attempts,
+			"last_attempted_at":  now,
+			"last_error":         errMessage,
+		})
+		utils.JSON(c, http.StatusAccepted, "lead retry failed", gin.H{
+			"lead_id":     event.ID,
+			"sync_status": "failed",
+			"error":       errMessage,
+		})
+		return
+	}
+
+	h.DB.Model(&models.LeadEvent{}).Where("id = ?", event.ID).Updates(map[string]interface{}{
+		"sync_status":        "synced",
+		"sync_attempt_count": attempts,
+		"last_attempted_at":  now,
+		"synced_at":          now,
+		"last_error":         "",
+		"metadata":           mergeLeadMetadata(event.Metadata, responseBody),
+	})
+
+	utils.JSON(c, http.StatusOK, "lead retried successfully", gin.H{
+		"lead_id":     event.ID,
+		"sync_status": "synced",
+	})
+}
+
 func (h *Handler) SyncCheckoutLead(payment models.Payment) error {
 	if payment.ID == "" {
 		return nil

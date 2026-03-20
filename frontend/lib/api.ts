@@ -362,6 +362,23 @@ export async function getAIGenerationLogs(
   return apiFetch<any[]>(`/api/v1/ai/logs${suffix}`, { cache: "no-store" }, token);
 }
 
+export async function getLeadEvents(
+  token: string,
+  params: { status?: string; lead_type?: string } = {},
+) {
+  const query = new URLSearchParams();
+  if (params.status) query.set("status", params.status);
+  if (params.lead_type) query.set("lead_type", params.lead_type);
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return apiFetch<any[]>(`/api/v1/leads${suffix}`, { cache: "no-store" }, token);
+}
+
+export async function retryLeadEvent(leadId: string, token: string) {
+  return apiFetch<any>(`/api/v1/leads/${leadId}/retry`, {
+    method: "POST",
+  }, token);
+}
+
 export async function getInstitutionOverview(institutionId: string, token: string) {
   return apiFetch<any>(`/api/v1/institutions/${institutionId}/overview`, { cache: "no-store" }, token);
 }
