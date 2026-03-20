@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/datatypes"
+	"gorm.io/gorm"
 )
 
 type contactLeadRequest struct {
@@ -95,6 +97,83 @@ func (h *Handler) SubmitPurchaseLead(c *gin.Context) {
 	utils.JSON(c, statusCode, "lead submitted", responseData)
 }
 
+func (h *Handler) SyncCheckoutLead(payment models.Payment) error {
+	if payment.ID == "" {
+		return nil
+	}
+
+	var existing models.LeadEvent
+	if err := h.DB.Select("id").First(&existing, "payment_id = ?", payment.ID).Error; err == nil {
+		return nil
+	} else if err != gorm.ErrRecordNotFound {
+		return err
+	}
+
+	event := models.LeadEvent{
+		UserID:        payment.UserID,
+		InstitutionID: payment.InstitutionID,
+		ProductID:     payment.ProductID,
+		PaymentID:     &payment.ID,
+		LeadType:      "purchase",
+		Source:        "checkout_success",
+		FullName:      "Checkout Customer",
+		Email:         "unknown@example.com",
+		Subject:       "Successful Checkout",
+		Message:       "A checkout was completed successfully.",
+		PlanCode:      payment.PlanCode,
+		Amount:        &payment.Amount,
+		Currency:      firstNonEmpty(strings.TrimSpace(payment.Currency), "INR"),
+		SyncStatus:    "pending",
+		Metadata: mustLeadMetadata(map[string]interface{}{
+			"channel":             "checkout_success",
+			"payment_id":          payment.ID,
+			"razorpay_order_id":   stringOrEmpty(payment.RazorpayOrderID),
+			"razorpay_payment_id": stringOrEmpty(payment.RazorpayPaymentID),
+		}),
+	}
+
+	if payment.UserID != nil {
+		var user models.User
+		if err := h.DB.Select("full_name, email, institution_id").First(&user, "id = ?", *payment.UserID).Error; err == nil {
+			event.FullName = firstNonEmpty(strings.TrimSpace(user.FullName), event.FullName)
+			event.Email = firstNonEmpty(strings.TrimSpace(strings.ToLower(user.Email)), event.Email)
+			if payment.InstitutionID == nil && user.InstitutionID != nil {
+				event.InstitutionID = user.InstitutionID
+			}
+		}
+	}
+
+	if event.InstitutionID != nil {
+		var institution models.Institution
+		if err := h.DB.Select("name").First(&institution, "id = ?", *event.InstitutionID).Error; err == nil {
+			event.InstitutionName = strings.TrimSpace(institution.Name)
+		}
+	}
+
+	if payment.ProductID != nil {
+		var product models.Product
+		if err := h.DB.Select("name").First(&product, "id = ?", *payment.ProductID).Error; err == nil {
+			event.ProductName = strings.TrimSpace(product.Name)
+			event.Subject = fmt.Sprintf("Successful Checkout for %s", product.Name)
+			event.Message = fmt.Sprintf("A checkout was completed successfully for %s.", product.Name)
+		}
+	}
+
+	if payment.Description != "" && event.ProductName == "" {
+		event.ProductName = strings.TrimSpace(payment.Description)
+		event.Subject = fmt.Sprintf("Successful Checkout for %s", event.ProductName)
+		event.Message = fmt.Sprintf("A checkout was completed successfully for %s.", event.ProductName)
+	}
+
+	_, responseData := h.createAndSyncLead(event)
+	if syncStatus, ok := responseData["sync_status"].(string); ok && syncStatus == "failed" {
+		if errText, ok := responseData["error"].(string); ok && errText != "" {
+			return fmt.Errorf(errText)
+		}
+	}
+	return nil
+}
+
 func (h *Handler) createAndSyncLead(event models.LeadEvent) (int, gin.H) {
 	if err := h.DB.Create(&event).Error; err != nil {
 		return http.StatusInternalServerError, gin.H{"error": err.Error()}
@@ -104,15 +183,17 @@ func (h *Handler) createAndSyncLead(event models.LeadEvent) (int, gin.H) {
 	attempts := event.SyncAttemptCount + 1
 	responseBody, err := h.LeadWebhook.Send(event)
 	if err != nil {
+		errMessage := truncateLeadError(err.Error())
 		h.DB.Model(&models.LeadEvent{}).Where("id = ?", event.ID).Updates(map[string]interface{}{
 			"sync_status":        "failed",
 			"sync_attempt_count": attempts,
 			"last_attempted_at":  now,
-			"last_error":         truncateLeadError(err.Error()),
+			"last_error":         errMessage,
 		})
 		return http.StatusAccepted, gin.H{
 			"lead_id":     event.ID,
 			"sync_status": "failed",
+			"error":       errMessage,
 		}
 	}
 
@@ -163,4 +244,11 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func stringOrEmpty(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }

@@ -11,6 +11,7 @@ type LeadEvent struct {
 	UserID           *string        `gorm:"type:uuid;index" json:"user_id"`
 	InstitutionID    *string        `gorm:"type:uuid;index" json:"institution_id"`
 	ProductID        *string        `gorm:"type:uuid;index" json:"product_id"`
+	PaymentID        *string        `gorm:"type:uuid;index" json:"payment_id"`
 	LeadType         string         `gorm:"size:50;index;not null" json:"lead_type"`
 	Source           string         `gorm:"size:100;index;not null" json:"source"`
 	FullName         string         `gorm:"size:255;not null" json:"full_name"`

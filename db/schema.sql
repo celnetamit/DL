@@ -167,6 +167,7 @@ CREATE TABLE IF NOT EXISTS lead_events (
   user_id UUID REFERENCES users(id) ON DELETE SET NULL,
   institution_id UUID REFERENCES institutions(id) ON DELETE SET NULL,
   product_id UUID REFERENCES products(id) ON DELETE SET NULL,
+  payment_id UUID REFERENCES payments(id) ON DELETE SET NULL,
   lead_type VARCHAR(50) NOT NULL,
   source VARCHAR(100) NOT NULL,
   full_name VARCHAR(255) NOT NULL,
@@ -192,6 +193,7 @@ CREATE TABLE IF NOT EXISTS lead_events (
 CREATE INDEX IF NOT EXISTS idx_lead_events_user_id ON lead_events (user_id);
 CREATE INDEX IF NOT EXISTS idx_lead_events_institution_id ON lead_events (institution_id);
 CREATE INDEX IF NOT EXISTS idx_lead_events_product_id ON lead_events (product_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_lead_events_payment_id ON lead_events (payment_id) WHERE payment_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_lead_events_lead_type ON lead_events (lead_type);
 CREATE INDEX IF NOT EXISTS idx_lead_events_source ON lead_events (source);
 CREATE INDEX IF NOT EXISTS idx_lead_events_email ON lead_events (email);

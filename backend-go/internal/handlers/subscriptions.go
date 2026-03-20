@@ -285,9 +285,18 @@ func (h *Handler) VerifyOrderPayment(c *gin.Context) {
 		return
 	}
 
-	utils.JSON(c, http.StatusOK, "payment verified and access activated", gin.H{
-		"payment": payment,
-	})
+	response := gin.H{
+		"payment":          payment,
+		"lead_sync_status": "synced",
+	}
+	message := "payment verified and access activated"
+	if err := h.SyncCheckoutLead(payment); err != nil {
+		response["lead_sync_status"] = "failed"
+		response["lead_sync_error"] = err.Error()
+		message = "payment verified and access activated, but CRM lead sync failed"
+	}
+
+	utils.JSON(c, http.StatusOK, message, response)
 }
 
 func (h *Handler) CreateSubscription(c *gin.Context) {
