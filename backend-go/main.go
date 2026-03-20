@@ -113,8 +113,10 @@ func main() {
 			KeySecret: cfg.RazorpayKeySecret,
 		},
 		LeadWebhook: services.LeadWebhookService{
-			URL:    cfg.CRMWebhookURL,
-			Secret: cfg.CRMWebhookSecret,
+			URL:        cfg.CRMWebhookURL,
+			Secret:     cfg.CRMWebhookSecret,
+			CompanyID:  cfg.LeadCompanyID,
+			WebsiteURL: cfg.AppBaseURL,
 		},
 		GoogleOAuth: &oauth2.Config{
 			ClientID:     cfg.GoogleClientID,

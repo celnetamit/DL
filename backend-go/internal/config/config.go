@@ -15,6 +15,7 @@ type Config struct {
 	RazorpayWebhookSecret string
 	CRMWebhookURL         string
 	CRMWebhookSecret      string
+	LeadCompanyID         string
 	AppBaseURL            string
 	AIEngineURL           string
 	GoogleClientID        string
@@ -34,6 +35,7 @@ func Load() Config {
 		RazorpayWebhookSecret: getEnv("RAZORPAY_WEBHOOK_SECRET", ""),
 		CRMWebhookURL:         firstEnv("LEAD_WEBHOOK_URL", "CRM_WEBHOOK_URL"),
 		CRMWebhookSecret:      firstEnv("LEAD_WEBHOOK_SECRET", "CRM_WEBHOOK_SECRET"),
+		LeadCompanyID:         getEnv("LEAD_COMPANY_ID", ""),
 		AppBaseURL:            getEnv("APP_BASE_URL", "http://localhost:3000"),
 		AIEngineURL:           getEnv("AI_ENGINE_URL", "http://localhost:8000"),
 		GoogleClientID:        getEnv("GOOGLE_CLIENT_ID", ""),
@@ -66,6 +68,9 @@ func (c Config) Validate() error {
 	}
 	if c.CRMWebhookSecret != "" && c.CRMWebhookURL == "" {
 		return fmt.Errorf("CRM_WEBHOOK_URL is required when CRM_WEBHOOK_SECRET is set")
+	}
+	if c.CRMWebhookURL != "" && c.LeadCompanyID == "" {
+		return fmt.Errorf("LEAD_COMPANY_ID is required when LEAD_WEBHOOK_URL is set")
 	}
 	if (c.GoogleClientID != "" || c.GoogleClientSecret != "") && c.GoogleRedirectURL == "" {
 		return fmt.Errorf("GOOGLE_REDIRECT_URL is required when Google OAuth is enabled")

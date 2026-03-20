@@ -48,6 +48,7 @@ RAZORPAY_KEY_SECRET=your_rzp_live_secret
 RAZORPAY_WEBHOOK_SECRET=your_rzp_webhook_secret
 LEAD_WEBHOOK_URL=https://your-crm.example.com/webhooks/leads
 LEAD_WEBHOOK_SECRET=your_crm_webhook_secret
+LEAD_COMPANY_ID=your_company_id
 
 # AI
 GEMINI_API_KEY=your-gemini-api-key

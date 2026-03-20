@@ -2,12 +2,10 @@ package services
 
 import (
 	"bytes"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"lms-backend/internal/models"
@@ -16,6 +14,8 @@ import (
 type LeadWebhookService struct {
 	URL        string
 	Secret     string
+	CompanyID  string
+	WebsiteURL string
 	HTTPClient *http.Client
 }
 
@@ -34,10 +34,20 @@ func (s LeadWebhookService) Send(event models.LeadEvent) (string, error) {
 	if !s.Enabled() {
 		return "", fmt.Errorf("CRM webhook is not configured")
 	}
+	if s.CompanyID == "" {
+		return "", fmt.Errorf("lead company id is not configured")
+	}
 
 	payload, err := json.Marshal(map[string]interface{}{
-		"event": "lead.created",
-		"lead":  event,
+		"companyId":        s.CompanyID,
+		"name":             event.FullName,
+		"email":            event.Email,
+		"phone":            event.Phone,
+		"organizationName": event.InstitutionName,
+		"source":           leadSourceLabel(event.Source),
+		"formName":         leadFormName(event.Source, event.LeadType),
+		"website":          s.WebsiteURL,
+		"notes":            leadNotes(event),
 	})
 	if err != nil {
 		return "", err
@@ -48,12 +58,8 @@ func (s LeadWebhookService) Send(event models.LeadEvent) (string, error) {
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Lead-Event", "lead.created")
-
 	if s.Secret != "" {
-		mac := hmac.New(sha256.New, []byte(s.Secret))
-		mac.Write(payload)
-		req.Header.Set("X-Lead-Signature", "sha256="+hex.EncodeToString(mac.Sum(nil)))
+		req.Header.Set("Authorization", "Bearer "+s.Secret)
 	}
 
 	res, err := s.client().Do(req)
@@ -72,4 +78,49 @@ func (s LeadWebhookService) Send(event models.LeadEvent) (string, error) {
 	}
 
 	return buf.String(), nil
+}
+
+func leadSourceLabel(source string) string {
+	switch source {
+	case "contact_form":
+		return "WEBSITE"
+	case "pricing_page":
+		return "WEBSITE"
+	default:
+		return "WEBSITE"
+	}
+}
+
+func leadFormName(source, leadType string) string {
+	switch source {
+	case "contact_form":
+		return "Contact Form"
+	case "pricing_page":
+		return "Purchase Request Form"
+	default:
+		if leadType == "purchase_request" {
+			return "Purchase Request Form"
+		}
+		return "Lead Form"
+	}
+}
+
+func leadNotes(event models.LeadEvent) string {
+	parts := make([]string, 0, 5)
+	if event.Subject != "" {
+		parts = append(parts, "Subject: "+event.Subject)
+	}
+	if event.Message != "" {
+		parts = append(parts, "Message: "+event.Message)
+	}
+	if event.ProductName != "" {
+		parts = append(parts, "Product: "+event.ProductName)
+	}
+	if event.PlanCode != "" {
+		parts = append(parts, "Plan Code: "+event.PlanCode)
+	}
+	if event.Amount != nil {
+		parts = append(parts, fmt.Sprintf("Quoted Amount: %d %s", *event.Amount, event.Currency))
+	}
+	return strings.Join(parts, " | ")
 }
