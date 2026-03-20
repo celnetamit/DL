@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"lms-backend/internal/models"
 	"lms-backend/internal/services"
 	"lms-backend/internal/utils"
 
@@ -154,5 +155,228 @@ func TestGetMyPurchasesReturnsEnrichedPurchaseHistory(t *testing.T) {
 	}
 	if row["user_email"] != "buyer@example.com" {
 		t.Fatalf("expected user_email buyer@example.com, got %#v", row["user_email"])
+	}
+}
+
+func TestShouldSkipEntitlementActivation(t *testing.T) {
+	subID := "sub-1"
+	activePurchase := models.Purchase{
+		AccessStatus:   "active",
+		SubscriptionID: &subID,
+	}
+	if !shouldSkipEntitlementActivation(activePurchase, nil) {
+		t.Fatalf("expected active linked purchase to skip duplicate activation")
+	}
+
+	pendingPurchase := models.Purchase{
+		AccessStatus: "pending",
+	}
+	if shouldSkipEntitlementActivation(pendingPurchase, nil) {
+		t.Fatalf("expected pending purchase not to skip activation")
+	}
+
+	if shouldSkipEntitlementActivation(activePurchase, gorm.ErrRecordNotFound) {
+		t.Fatalf("expected missing purchase lookup not to skip activation")
+	}
+}
+
+func TestHandlePaymentEventFailedUpdatesPaymentAndPurchaseState(t *testing.T) {
+	db, mock := setupSubscriptionsMockDB(t)
+	handler := &Handler{DB: db}
+
+	orderID := "order-1"
+	paymentID := "pay_failed"
+	now := time.Now().UTC()
+
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "payments" WHERE razorpay_order_id = $1 ORDER BY "payments"."id" LIMIT $2`)).
+		WithArgs(orderID, 1).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "user_id", "institution_id", "subscription_id", "product_id", "plan_code", "description", "razorpay_payment_id", "razorpay_order_id", "amount", "currency", "status", "created_at",
+		}).AddRow("payment-1", nil, nil, nil, nil, "PLAN_ONE", "PLAN_ONE", nil, orderID, 99900, "INR", "created", now))
+
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE "payments" SET "razorpay_payment_id"=$1,"status"=$2 WHERE id = $3`)).
+		WithArgs(paymentID, "failed", "payment-1").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	mock.ExpectBegin()
+	mock.ExpectExec(`UPDATE .*"purchases".*SET`).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	handler.handlePaymentEvent(map[string]interface{}{
+		"payload": map[string]interface{}{
+			"payment": map[string]interface{}{
+				"entity": map[string]interface{}{
+					"id":       paymentID,
+					"order_id": orderID,
+				},
+			},
+		},
+	}, "failed")
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
+func TestHandlePaymentEventCapturedReusesExistingEntitlement(t *testing.T) {
+	db, mock := setupSubscriptionsMockDB(t)
+	handler := &Handler{DB: db}
+
+	orderID := "order-1"
+	paymentID := "pay_captured"
+	subscriptionRef := "rzp_sub_1"
+	subscriptionID := "sub-1"
+	now := time.Now().UTC()
+
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "payments" WHERE razorpay_order_id = $1 ORDER BY "payments"."id" LIMIT $2`)).
+		WithArgs(orderID, 1).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "user_id", "institution_id", "subscription_id", "product_id", "plan_code", "description", "razorpay_payment_id", "razorpay_order_id", "amount", "currency", "status", "created_at",
+		}).AddRow("payment-1", "user-1", nil, nil, "product-1", "PLAN_ONE", "PLAN_ONE", nil, orderID, 99900, "INR", "created", now))
+
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE "payments" SET "razorpay_payment_id"=$1,"status"=$2 WHERE id = $3`)).
+		WithArgs(paymentID, "captured", "payment-1").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "payments" WHERE id = $1 ORDER BY "payments"."id" LIMIT $2`)).
+		WithArgs("payment-1", 1).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "user_id", "institution_id", "subscription_id", "product_id", "plan_code", "description", "razorpay_payment_id", "razorpay_order_id", "amount", "currency", "status", "created_at",
+		}).AddRow("payment-1", "user-1", nil, nil, "product-1", "PLAN_ONE", "PLAN_ONE", paymentID, orderID, 99900, "INR", "captured", now))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "purchases" WHERE payment_id = $1 ORDER BY "purchases"."id" LIMIT $2`)).
+		WithArgs("payment-1", 1).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "user_id", "institution_id", "product_id", "subscription_id", "payment_id", "plan_code",
+			"purchase_type", "access_status", "payment_status", "amount", "currency", "activated_at",
+			"access_ends_at", "razorpay_order_id", "razorpay_payment_id", "created_at", "updated_at",
+		}).AddRow(
+			"purchase-1", "user-1", nil, "product-1", subscriptionID, "payment-1", "PLAN_ONE",
+			"one_time", "active", "captured", 99900, "INR", now, nil, orderID, paymentID, now, now,
+		))
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE "payments" SET "subscription_id"=$1 WHERE id = $2`)).
+		WithArgs(subscriptionID, "payment-1").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	mock.ExpectBegin()
+	mock.ExpectExec(`UPDATE .*"subscriptions".*SET`).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	handler.handlePaymentEvent(map[string]interface{}{
+		"payload": map[string]interface{}{
+			"payment": map[string]interface{}{
+				"entity": map[string]interface{}{
+					"id":              paymentID,
+					"order_id":        orderID,
+					"subscription_id": subscriptionRef,
+				},
+			},
+		},
+	}, "captured")
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
+func TestHandlePaymentEventFailedMarksSubscriptionPastDue(t *testing.T) {
+	db, mock := setupSubscriptionsMockDB(t)
+	handler := &Handler{DB: db}
+
+	orderID := "order-2"
+	paymentID := "pay_failed_2"
+	subscriptionRef := "rzp_sub_2"
+	now := time.Now().UTC()
+
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "payments" WHERE razorpay_order_id = $1 ORDER BY "payments"."id" LIMIT $2`)).
+		WithArgs(orderID, 1).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "user_id", "institution_id", "subscription_id", "product_id", "plan_code", "description", "razorpay_payment_id", "razorpay_order_id", "amount", "currency", "status", "created_at",
+		}).AddRow("payment-2", nil, nil, nil, nil, "PLAN_ONE", "PLAN_ONE", nil, orderID, 99900, "INR", "created", now))
+
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE "payments" SET "razorpay_payment_id"=$1,"status"=$2 WHERE id = $3`)).
+		WithArgs(paymentID, "failed", "payment-2").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	mock.ExpectBegin()
+	mock.ExpectExec(`UPDATE .*"purchases".*SET`).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	mock.ExpectBegin()
+	mock.ExpectExec(`UPDATE .*"subscriptions".*SET`).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	handler.handlePaymentEvent(map[string]interface{}{
+		"payload": map[string]interface{}{
+			"payment": map[string]interface{}{
+				"entity": map[string]interface{}{
+					"id":              paymentID,
+					"order_id":        orderID,
+					"subscription_id": subscriptionRef,
+				},
+			},
+		},
+	}, "failed")
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
+func TestSubscriptionWebhookHandlersUpdateStatuses(t *testing.T) {
+	db, mock := setupSubscriptionsMockDB(t)
+	handler := &Handler{DB: db}
+
+	subscriptionRef := "rzp_sub_status"
+	periodEnd := time.Now().Add(24 * time.Hour).UTC().Unix()
+
+	mock.ExpectBegin()
+	mock.ExpectExec(`UPDATE .*"subscriptions".*SET`).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	handler.handleSubscriptionCancelled(map[string]interface{}{
+		"payload": map[string]interface{}{
+			"subscription": map[string]interface{}{
+				"entity": map[string]interface{}{"id": subscriptionRef},
+			},
+		},
+	})
+
+	mock.ExpectBegin()
+	mock.ExpectExec(`UPDATE .*"subscriptions".*SET`).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	handler.handleSubscriptionActivated(map[string]interface{}{
+		"payload": map[string]interface{}{
+			"subscription": map[string]interface{}{
+				"entity": map[string]interface{}{
+					"id":          subscriptionRef,
+					"current_end": float64(periodEnd),
+				},
+			},
+		},
+	})
+
+	mock.ExpectBegin()
+	mock.ExpectExec(`UPDATE .*"subscriptions".*SET`).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	handler.handleSubscriptionHalted(map[string]interface{}{
+		"payload": map[string]interface{}{
+			"subscription": map[string]interface{}{
+				"entity": map[string]interface{}{"id": subscriptionRef},
+			},
+		},
+	})
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
 	}
 }

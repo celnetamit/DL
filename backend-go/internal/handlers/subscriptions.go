@@ -437,6 +437,21 @@ func (h *Handler) activateEntitlementForPayment(payment *models.Payment, payment
 			return err
 		}
 
+		var existingPurchase models.Purchase
+		purchaseErr := tx.Where("payment_id = ?", refreshed.ID).First(&existingPurchase).Error
+		if purchaseErr != nil && purchaseErr != gorm.ErrRecordNotFound {
+			return purchaseErr
+		}
+
+		if shouldSkipEntitlementActivation(existingPurchase, purchaseErr) {
+			if err := tx.Model(&models.Payment{}).Where("id = ?", refreshed.ID).Update("subscription_id", existingPurchase.SubscriptionID).Error; err != nil {
+				return err
+			}
+			refreshed.SubscriptionID = existingPurchase.SubscriptionID
+			*payment = refreshed
+			return nil
+		}
+
 		sub, err := ensurePaymentSubscription(tx, &refreshed)
 		if err != nil {
 			return err
@@ -452,7 +467,9 @@ func (h *Handler) activateEntitlementForPayment(payment *models.Payment, payment
 			"payment_status":      paymentStatus,
 			"access_status":       "active",
 			"razorpay_payment_id": paymentID,
-			"activated_at":        now,
+		}
+		if purchaseErr != nil || existingPurchase.ActivatedAt == nil {
+			purchaseUpdates["activated_at"] = now
 		}
 		if err := tx.Model(&models.Purchase{}).Where("payment_id = ?", refreshed.ID).Updates(purchaseUpdates).Error; err != nil {
 			return err
@@ -462,6 +479,10 @@ func (h *Handler) activateEntitlementForPayment(payment *models.Payment, payment
 		*payment = refreshed
 		return nil
 	})
+}
+
+func shouldSkipEntitlementActivation(purchase models.Purchase, lookupErr error) bool {
+	return lookupErr == nil && purchase.AccessStatus == "active" && purchase.SubscriptionID != nil && *purchase.SubscriptionID != ""
 }
 
 func ensurePaymentSubscription(tx *gorm.DB, payment *models.Payment) (*models.Subscription, error) {
