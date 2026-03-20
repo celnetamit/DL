@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Building2, GraduationCap, Layers3, Users } from "lucide-react";
 import { apiFetch, getInstitutionOverview } from "@/lib/api";
+import Toast from "@/components/Toast";
 
 type Institution = {
   id: string;
@@ -56,18 +57,23 @@ export default function InstitutionPanel({ token }: { token: string | null }) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [msgTone, setMsgTone] = useState<"success" | "error">("success");
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [overviewLoadingId, setOverviewLoadingId] = useState<string | null>(null);
+  const [overviewErrorById, setOverviewErrorById] = useState<Record<string, string>>({});
 
   const fetchInstitutions = async () => {
     if (!token) return;
     setLoading(true);
+    setLoadError(null);
     try {
       const data = await apiFetch<Institution[]>("/api/v1/institutions", {}, token);
       setInstitutions(data || []);
       if (!selectedInstitutionId && data?.length) {
         setSelectedInstitutionId(data[0].id);
       }
-    } catch {
-      // silent
+    } catch (error: any) {
+      setLoadError(error.message || "Unable to load institution accounts right now.");
     } finally {
       setLoading(false);
     }
@@ -75,11 +81,22 @@ export default function InstitutionPanel({ token }: { token: string | null }) {
 
   const fetchOverview = async (institutionId: string) => {
     if (!token) return;
+    setOverviewLoadingId(institutionId);
     try {
       const overview = await getInstitutionOverview(institutionId, token);
       setOverviewById((prev) => ({ ...prev, [institutionId]: overview }));
-    } catch {
-      // silent
+      setOverviewErrorById((prev) => {
+        const next = { ...prev };
+        delete next[institutionId];
+        return next;
+      });
+    } catch (error: any) {
+      const nextError = error.message || "Unable to load institution analytics right now.";
+      setOverviewErrorById((prev) => ({ ...prev, [institutionId]: nextError }));
+      setMsg(nextError);
+      setMsgTone("error");
+    } finally {
+      setOverviewLoadingId(null);
     }
   };
 
@@ -98,6 +115,7 @@ export default function InstitutionPanel({ token }: { token: string | null }) {
     [institutions, selectedInstitutionId],
   );
   const selectedOverview = selectedInstitutionId ? overviewById[selectedInstitutionId] : null;
+  const selectedOverviewError = selectedInstitutionId ? overviewErrorById[selectedInstitutionId] : null;
 
   const handleCreateOrUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -115,6 +133,7 @@ export default function InstitutionPanel({ token }: { token: string | null }) {
           token,
         );
         setMsg("Institution updated");
+        setMsgTone("success");
       } else {
         await apiFetch(
           "/api/v1/institutions",
@@ -125,6 +144,7 @@ export default function InstitutionPanel({ token }: { token: string | null }) {
           token,
         );
         setMsg("Institution created");
+        setMsgTone("success");
       }
       setForm(EMPTY_FORM);
       setEditingId(null);
@@ -134,7 +154,8 @@ export default function InstitutionPanel({ token }: { token: string | null }) {
         await fetchOverview(selectedInstitutionId);
       }
     } catch (err: any) {
-      setMsg(err.message || "Failed to save institution");
+      setMsg(err.message || "Unable to save this institution right now.");
+      setMsgTone("error");
     } finally {
       setBusy(false);
     }
@@ -166,8 +187,11 @@ export default function InstitutionPanel({ token }: { token: string | null }) {
       );
       await fetchInstitutions();
       await fetchOverview(institution.id);
-    } catch {
-      // silent
+      setMsg(`Institution ${nextStatus === "active" ? "activated" : "deactivated"} successfully`);
+      setMsgTone("success");
+    } catch (error: any) {
+      setMsg(error.message || "Unable to update institution status right now.");
+      setMsgTone("error");
     }
   };
 
@@ -176,6 +200,7 @@ export default function InstitutionPanel({ token }: { token: string | null }) {
 
   return (
     <div className="space-y-6">
+      {msg && <Toast message={msg} tone={msgTone} onClose={() => setMsg(null)} />}
       <section className="grid gap-4 md:grid-cols-3">
         <div className="glass rounded-2xl p-6 border border-dune/10">
           <p className="text-[10px] uppercase tracking-widest text-dune/55">Institutions</p>
@@ -213,8 +238,6 @@ export default function InstitutionPanel({ token }: { token: string | null }) {
               {showForm ? "Close Form" : "+ New Institution"}
             </button>
           </div>
-
-          {msg && <p className="mb-4 text-xs text-ember">{msg}</p>}
 
           {showForm && (
             <form onSubmit={handleCreateOrUpdate} className="mb-6 grid gap-3 rounded-2xl border border-dune/10 bg-midnight/40 p-5">
@@ -267,6 +290,10 @@ export default function InstitutionPanel({ token }: { token: string | null }) {
 
           {loading ? (
             <p className="text-sm text-dune/50">Loading institutions...</p>
+          ) : loadError ? (
+            <div className="rounded-2xl border border-ember/20 bg-ember/5 p-4 text-sm text-ember">
+              {loadError}
+            </div>
           ) : institutions.length === 0 ? (
             <p className="text-sm text-dune/50">No institutions yet. Create one to begin selling managed library access.</p>
           ) : (
@@ -298,7 +325,7 @@ export default function InstitutionPanel({ token }: { token: string | null }) {
                             Seats {overview?.summary.seats_used ?? 0}/{institution.student_limit || 0}
                           </span>
                           <span className="rounded-full bg-dune/10 px-2 py-1">
-                            Subs {overview?.summary.active_subscriptions ?? 0}
+                            {overviewLoadingId === institution.id && !overview ? "Refreshing..." : `Subs ${overview?.summary.active_subscriptions ?? 0}`}
                           </span>
                           <span className="rounded-full bg-dune/10 px-2 py-1">
                             Products {overview?.summary.active_products ?? 0}
@@ -348,10 +375,30 @@ export default function InstitutionPanel({ token }: { token: string | null }) {
             <h3 className="font-[var(--font-space)] text-xl">Institution Health</h3>
           </div>
 
-          {!selectedInstitution || !selectedOverview ? (
+          {!selectedInstitution ? (
             <p className="mt-6 text-sm text-dune/50">Select an institution to inspect seats, members, subscriptions, and growth.</p>
+          ) : overviewLoadingId === selectedInstitution.id && !selectedOverview ? (
+            <p className="mt-6 text-sm text-dune/50">Loading institution analytics...</p>
+          ) : selectedOverviewError && !selectedOverview ? (
+            <div className="mt-6 rounded-2xl border border-ember/20 bg-ember/5 p-4 text-sm text-ember">
+              <p>{selectedOverviewError}</p>
+              <button
+                type="button"
+                onClick={() => fetchOverview(selectedInstitution.id)}
+                className="mt-3 rounded-full border border-ember/30 px-3 py-1 text-xs font-semibold text-ember transition hover:bg-ember/10"
+              >
+                Retry Analytics Load
+              </button>
+            </div>
+          ) : !selectedOverview ? (
+            <p className="mt-6 text-sm text-dune/50">Institution analytics are not available yet. Try selecting the institution again.</p>
           ) : (
             <div className="mt-6 space-y-6">
+              {selectedOverviewError && (
+                <div className="rounded-2xl border border-ember/20 bg-ember/5 p-4 text-sm text-ember">
+                  Showing the most recent saved overview. {selectedOverviewError}
+                </div>
+              )}
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="rounded-2xl bg-midnight/40 p-4">
                   <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-dune/55">

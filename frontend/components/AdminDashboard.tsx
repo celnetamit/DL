@@ -160,6 +160,8 @@ export default function AdminDashboard() {
   const [statusFilter, setStatusFilter] = useState("");
   const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [analyticsLoadError, setAnalyticsLoadError] = useState<string | null>(null);
+  const [domainLoadError, setDomainLoadError] = useState<string | null>(null);
   const itemsPerPage = 20;
 
   const [importProgress, setImportProgress] = useState<{
@@ -202,7 +204,8 @@ export default function AdminDashboard() {
       setItemsByCategory((prev) => ({ ...prev, [catKey]: formatted }));
     } catch (err) {
       console.error(err);
-      setErrorMsg("Failed to load contents.");
+      const categoryLabel = CATEGORIES.find((item) => item.key === catKey)?.label.toLowerCase() || "content";
+      setErrorMsg(`Unable to load ${categoryLabel} records right now.`);
     } finally {
       setLoading(false);
     }
@@ -216,8 +219,24 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     if (!authLoading && token) {
-      getAdminAnalytics(token).then(setAnalytics).catch(console.error);
-      apiFetch<any[]>("/api/v1/domains", { cache: "no-store" }, token).then(d => setGlobalDomains(d || [])).catch(console.error);
+      setAnalyticsLoadError(null);
+      setDomainLoadError(null);
+      getAdminAnalytics(token)
+        .then(setAnalytics)
+        .catch((error) => {
+          console.error(error);
+          const message = error.message || "Unable to load admin analytics.";
+          setAnalyticsLoadError(message);
+          setToast({ message, tone: "error" });
+        });
+      apiFetch<any[]>("/api/v1/domains", { cache: "no-store" }, token)
+        .then(d => setGlobalDomains(d || []))
+        .catch((error) => {
+          console.error(error);
+          const message = error.message || "Unable to load the domain catalog.";
+          setDomainLoadError(message);
+          setToast({ message, tone: "error" });
+        });
     }
   }, [token, authLoading]);
 
@@ -258,17 +277,18 @@ export default function AdminDashboard() {
       };
 
       if (editingId) {
-        const updated = await updateContent(editingId, payload, token);
-        // Optimistic UI update or reload
+        await updateContent(editingId, payload, token);
         await loadData(category.key);
+        setToast({ message: `${category.label} record updated successfully.`, tone: "success" });
       } else {
-        const created = await createContent(payload, token);
+        await createContent(payload, token);
         await loadData(category.key);
+        setToast({ message: `${category.label} record created successfully.`, tone: "success" });
       }
       resetForm();
     } catch (err) {
       console.error(err);
-      setErrorMsg("Failed to save. Make sure required fields are filled.");
+      setErrorMsg(`Unable to save this ${category.label.toLowerCase()} record. Check the required fields and try again.`);
     }
   };
 
@@ -339,6 +359,7 @@ export default function AdminDashboard() {
 
       const headers = parseCSVLine(lines[0]);
       let imports = 0;
+      let failedRows = 0;
       setLoading(true);
 
       const totalRows = lines.length - 1;
@@ -396,6 +417,7 @@ export default function AdminDashboard() {
           imports++;
         } catch (err) {
           console.error("Failed importing row", i, err);
+          failedRows++;
         }
 
         const elapsedSeconds = (Date.now() - startTime) / 1000;
@@ -405,7 +427,12 @@ export default function AdminDashboard() {
         setImportProgress(prev => prev ? { ...prev, processed: i, etaSeconds } : null);
       }
       
-      setToast({ message: `Import completed: ${imports} records processed.`, tone: "success" });
+      setToast({
+        message: failedRows > 0
+          ? `Import finished with ${imports} successful rows and ${failedRows} failed rows.`
+          : `Import completed successfully with ${imports} records processed.`,
+        tone: failedRows > 0 ? "error" : "success",
+      });
       await loadData(category.key);
       setLoading(false);
       setImportProgress(null);
@@ -429,8 +456,8 @@ export default function AdminDashboard() {
       setToast({ message: "Record deleted successfully.", tone: "success" });
     } catch (err) {
       console.error(err);
-      setErrorMsg("Failed to delete item.");
-      setToast({ message: "Failed to delete item.", tone: "error" });
+      setErrorMsg(`Unable to delete this ${category.label.toLowerCase()} record.`);
+      setToast({ message: `Unable to delete this ${category.label.toLowerCase()} record.`, tone: "error" });
     }
   };
 
@@ -447,6 +474,12 @@ export default function AdminDashboard() {
   return (
     <>
       {toast && <Toast message={toast.message} tone={toast.tone} onClose={() => setToast(null)} />}
+      {(analyticsLoadError || domainLoadError) && (
+        <div className="mb-6 rounded-2xl border border-ember/20 bg-ember/5 p-4 text-sm text-ember">
+          {analyticsLoadError && <p>{analyticsLoadError}</p>}
+          {domainLoadError && <p className={analyticsLoadError ? "mt-1" : ""}>{domainLoadError}</p>}
+        </div>
+      )}
       <section className="grid gap-6 md:grid-cols-3 mb-8 min-w-0 w-full">
         <div className="glass rounded-2xl p-6 border border-dune/20">
           <p className="text-[10px] font-bold uppercase tracking-widest text-dune/60">Total Users</p>

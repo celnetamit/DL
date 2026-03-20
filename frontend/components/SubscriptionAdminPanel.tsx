@@ -107,6 +107,7 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
   const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [pendingCancelId, setPendingCancelId] = useState<string | null>(null);
+  const [loadIssues, setLoadIssues] = useState<string[]>([]);
 
   const fetchSubs = useCallback(async () => {
     if (!token) return;
@@ -116,7 +117,11 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
       if (filterStatus) params.set("status", filterStatus);
       const data = await apiFetch<Subscription[]>(`/api/v1/subscriptions/all?${params}`, {}, token);
       setSubs(data || []);
-    } catch { /* silent */ } finally { setLoading(false); }
+    } catch (error: any) {
+      const message = error.message || "Unable to load subscription records.";
+      setLoadIssues((prev) => [...prev.filter((entry) => entry !== message), message]);
+      setToast({ message, tone: "error" });
+    } finally { setLoading(false); }
   }, [token, filterStatus]);
 
   const fetchUsers = useCallback(async () => {
@@ -124,8 +129,10 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
     try {
       const data = await apiFetch<User[]>("/api/v1/admin/users", {}, token);
       setUsers(data || []);
-    } catch {
-      // Silently fail if the caller does not have permission to list users.
+    } catch (error: any) {
+      const message = error.message || "Unable to load user options for subscription assignment.";
+      setLoadIssues((prev) => [...prev.filter((entry) => entry !== message), message]);
+      setToast({ message, tone: "error" });
     }
   }, [token]);
 
@@ -134,8 +141,10 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
     try {
       const data = await apiFetch<Payment[]>("/api/v1/payments/all", {}, token);
       setPayments(data || []);
-    } catch {
-      // silent
+    } catch (error: any) {
+      const message = error.message || "Unable to load payment history.";
+      setLoadIssues((prev) => [...prev.filter((entry) => entry !== message), message]);
+      setToast({ message, tone: "error" });
     }
   }, [token]);
 
@@ -144,8 +153,10 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
     try {
       const data = await apiFetch<Purchase[]>("/api/v1/purchases/all", {}, token);
       setPurchases(data || []);
-    } catch {
-      // silent
+    } catch (error: any) {
+      const message = error.message || "Unable to load purchase and license records.";
+      setLoadIssues((prev) => [...prev.filter((entry) => entry !== message), message]);
+      setToast({ message, tone: "error" });
     }
   }, [token]);
 
@@ -153,7 +164,11 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
     try {
       const data = await apiFetch<Product[]>("/api/v1/products", {});
       setProducts(data || []);
-    } catch { /* silent */ }
+    } catch (error: any) {
+      const message = error.message || "Unable to load product catalog options.";
+      setLoadIssues((prev) => [...prev.filter((entry) => entry !== message), message]);
+      setToast({ message, tone: "error" });
+    }
   }, []);
 
   const fetchInstitutions = useCallback(async () => {
@@ -161,12 +176,22 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
     try {
       const data = await apiFetch<Institution[]>("/api/v1/institutions", {}, token);
       setInstitutions(data || []);
-    } catch {
-      // silent
+    } catch (error: any) {
+      const message = error.message || "Unable to load institution options.";
+      setLoadIssues((prev) => [...prev.filter((entry) => entry !== message), message]);
+      setToast({ message, tone: "error" });
     }
   }, [token]);
 
-  useEffect(() => { fetchSubs(); fetchUsers(); fetchProducts(); fetchInstitutions(); fetchPayments(); fetchPurchases(); }, [fetchSubs, fetchUsers, fetchProducts, fetchInstitutions, fetchPayments, fetchPurchases]);
+  useEffect(() => {
+    setLoadIssues([]);
+    fetchSubs();
+    fetchUsers();
+    fetchProducts();
+    fetchInstitutions();
+    fetchPayments();
+    fetchPurchases();
+  }, [fetchSubs, fetchUsers, fetchProducts, fetchInstitutions, fetchPayments, fetchPurchases]);
 
   const openCreate = () => {
     setEditingId(null);
@@ -211,8 +236,8 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
       fetchPayments();
       fetchPurchases();
       setToast({ message: editingId ? "Subscription updated successfully." : "Subscription created successfully.", tone: "success" });
-    } catch {
-      setToast({ message: "Failed to save subscription", tone: "error" });
+    } catch (error: any) {
+      setToast({ message: error.message || "Unable to save this subscription.", tone: "error" });
     }
     finally { setSaving(false); }
   };
@@ -227,8 +252,8 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
       setToast({ message: "Subscription deleted successfully.", tone: "success" });
       setPendingDeleteId(null);
       if (selectedSub?.id === id) setSelectedSub(null);
-    } catch {
-      setToast({ message: "Failed to delete subscription", tone: "error" });
+    } catch (error: any) {
+      setToast({ message: error.message || "Unable to delete this subscription.", tone: "error" });
     }
   };
 
@@ -242,8 +267,8 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
       setToast({ message: "Subscription cancelled successfully.", tone: "success" });
       setPendingCancelId(null);
       setSelectedSub(null);
-    } catch {
-      setToast({ message: "Failed to cancel subscription", tone: "error" });
+    } catch (error: any) {
+      setToast({ message: error.message || "Unable to cancel this subscription.", tone: "error" });
     }
   };
 
@@ -272,6 +297,14 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
   return (
     <div className="space-y-6 min-w-0">
       {toast && <Toast message={toast.message} tone={toast.tone} onClose={() => setToast(null)} />}
+      {loadIssues.length > 0 && (
+        <div className="rounded-2xl border border-ember/20 bg-ember/5 p-4 text-sm text-ember">
+          <p className="font-semibold">Some manager data could not be loaded.</p>
+          <p className="mt-1 text-ember/80">
+            Subscription actions still work, but related lists may be incomplete until these requests succeed again.
+          </p>
+        </div>
+      )}
       <section className="grid gap-4 md:grid-cols-3">
         <div className="glass rounded-2xl p-6 border border-dune/10">
           <p className="text-[10px] uppercase tracking-widest text-dune/55">Active Subscriptions</p>

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api";
+import Toast from "@/components/Toast";
 import {
   ADMIN_ROLE_OPTIONS,
   ROLE_SUBSCRIPTION_MANAGER,
@@ -35,10 +36,13 @@ export default function UserManagementPanel({ token }: { token: string | null })
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [messageTone, setMessageTone] = useState<"success" | "error">("success");
   const [filterRole, setFilterRole] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterInstitution, setFilterInstitution] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  const [institutionLoadError, setInstitutionLoadError] = useState<string | null>(null);
+  const [userLoadError, setUserLoadError] = useState<string | null>(null);
   const [createForm, setCreateForm] = useState({
     email: "",
     password: "",
@@ -54,6 +58,7 @@ export default function UserManagementPanel({ token }: { token: string | null })
   const fetchUsers = async () => {
     if (!token) return;
     setLoading(true);
+    setUserLoadError(null);
     try {
       const params = new URLSearchParams();
       if (filterRole) params.set("role", filterRole);
@@ -63,7 +68,7 @@ export default function UserManagementPanel({ token }: { token: string | null })
       setUsers(data);
       setMessage(null);
     } catch (error: any) {
-      setMessage(error.message || "Failed to load users");
+      setUserLoadError(error.message || "Unable to load user records right now.");
     } finally {
       setLoading(false);
     }
@@ -71,11 +76,12 @@ export default function UserManagementPanel({ token }: { token: string | null })
 
   const fetchInstitutions = async () => {
     if (!token) return;
+    setInstitutionLoadError(null);
     try {
       const data = await apiFetch<Institution[]>("/api/v1/institutions", {}, token);
       setInstitutions(data || []);
-    } catch {
-      // silent
+    } catch (error: any) {
+      setInstitutionLoadError(error.message || "Unable to load institution filters right now.");
     }
   };
 
@@ -95,7 +101,12 @@ export default function UserManagementPanel({ token }: { token: string | null })
         method: "PUT",
         body: JSON.stringify({ role }),
       }, token);
+      setMessage("User role updated successfully.");
+      setMessageTone("success");
       await fetchUsers();
+    } catch (error: any) {
+      setMessage(error.message || "Unable to update the selected role.");
+      setMessageTone("error");
     } finally {
       setBusy(null);
     }
@@ -109,7 +120,12 @@ export default function UserManagementPanel({ token }: { token: string | null })
         method: "PUT",
         body: JSON.stringify({ status: current === "active" ? "inactive" : "active" }),
       }, token);
+      setMessage("User status updated successfully.");
+      setMessageTone("success");
       await fetchUsers();
+    } catch (error: any) {
+      setMessage(error.message || "Unable to update user status.");
+      setMessageTone("error");
     } finally {
       setBusy(null);
     }
@@ -133,10 +149,12 @@ export default function UserManagementPanel({ token }: { token: string | null })
         institution_id: "",
       });
       setShowCreateForm(false);
-      setMessage("User created successfully");
+      setMessage("User created successfully.");
+      setMessageTone("success");
       await fetchUsers();
     } catch (error: any) {
-      setMessage(error.message || "Failed to create user");
+      setMessage(error.message || "Unable to create the new user.");
+      setMessageTone("error");
     } finally {
       setBusy(null);
     }
@@ -144,6 +162,7 @@ export default function UserManagementPanel({ token }: { token: string | null })
 
   return (
     <div className="glass rounded-2xl p-6">
+      {message && <Toast message={message} tone={messageTone} onClose={() => setMessage(null)} />}
       <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
         <div>
           <h3 className="font-[var(--font-space)] text-xl">User Management</h3>
@@ -194,7 +213,12 @@ export default function UserManagementPanel({ token }: { token: string | null })
         </div>
       </div>
 
-      {message && <p className="mb-4 text-sm text-ember">{message}</p>}
+      {institutionLoadError && <p className="mb-4 text-sm text-ember">{institutionLoadError}</p>}
+      {userLoadError && (
+        <div className="mb-4 rounded-2xl border border-ember/20 bg-ember/5 p-4 text-sm text-ember">
+          {userLoadError}
+        </div>
+      )}
 
       {showCreateForm && canManageRoles && (
         <form onSubmit={handleCreateUser} className="mb-6 grid gap-3 rounded-2xl border border-dune/10 bg-midnight/30 p-4 md:grid-cols-2">
@@ -264,8 +288,14 @@ export default function UserManagementPanel({ token }: { token: string | null })
 
       {loading ? (
         <p className="text-sm text-dune/50">Loading users...</p>
+      ) : userLoadError ? (
+        <p className="text-sm text-dune/50">Try refreshing the user list after the admin API is available again.</p>
       ) : users.length === 0 ? (
-        <p className="text-sm text-dune/50">No users found.</p>
+        <p className="text-sm text-dune/50">
+          {filterRole || filterStatus || filterInstitution
+            ? "No users match the current filters."
+            : "No users have been created yet."}
+        </p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
