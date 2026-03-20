@@ -14,6 +14,9 @@ This repository follows the architecture described in `lms_architecture.md` with
 psql "postgres://lms_user:lms_pass@localhost:5433/lms?sslmode=disable" -f db/schema.sql
 ```
 
+Or let the backend apply the embedded SQL migrations automatically on boot with `RUN_MIGRATIONS=true`.
+If you are adopting the migration system on an existing auto-migrated database, set `BASELINE_EXISTING_SCHEMA=true` for the first boot only so the current schema is recorded as migration `000001_initial_schema.sql` instead of being recreated.
+
 2. **Backend**
 
 ```bash
@@ -22,7 +25,7 @@ cp .env.example .env
 # update DATABASE_URL, JWT_SECRET, Razorpay keys
 
 go mod tidy
-AUTO_MIGRATE=false go run main.go
+RUN_MIGRATIONS=true go run main.go
 ```
 
 3. **AI Engine**
@@ -51,5 +54,8 @@ npm run dev
 - All sensitive credentials are kept in `.env` files.
 - For production, set `APP_ENV=production`, `GIN_MODE=release`, a strong `JWT_SECRET`, explicit `APP_BASE_URL`, `NEXT_PUBLIC_API_URL`, and `TRUSTED_PROXIES`.
 - The backend now fails fast on insecure production config, pings the database in `/health`, and runs with HTTP server timeouts suitable for deployment behind a reverse proxy.
+- The backend now uses versioned SQL migrations instead of relying on GORM `AutoMigrate` drift at startup.
+- The repo now includes both a baseline migration and a follow-up `000002` migration to demonstrate the normal upgrade path after initial adoption.
+- For existing production databases created before this migration system, deploy once with `BASELINE_EXISTING_SCHEMA=true`, verify boot success, then set it back to `false`.
 - Docker images now run as non-root users, and `docker-compose.yml` includes service healthchecks plus frontend build args so production URLs are not baked incorrectly.
 # DL

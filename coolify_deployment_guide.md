@@ -80,7 +80,8 @@ Navigate to the generated Services section in your Coolify Dashboard:
 
 1. Click **Deploy**.
 2. Coolify will fetch the standard optimized `Dockerfile`s generated for `frontend`, `backend-go`, and `ai-engine-py`. This will take several minutes to build correctly the first time.
-3. Because Go automatically bootstraps `GORM` schema migrations, the database will correctly build out tables immediately when the Backend starts up.
+3. The backend now applies embedded versioned SQL migrations on startup when `RUN_MIGRATIONS=true`, so the database schema is created and upgraded in a controlled way instead of relying on GORM `AutoMigrate`.
+4. If your production database already existed before this migration system was introduced, set `BASELINE_EXISTING_SCHEMA=true` for the first deploy only. This records the baseline migration without replaying it over the live schema. After the deployment succeeds, set it back to `false`.
 
 ### Seed The Database (First Time Only!)
 The backend automatically seeds the initial `super_admin` account on first boot using:

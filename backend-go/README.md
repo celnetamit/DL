@@ -8,17 +8,21 @@
 cp .env.example .env
 ```
 
-2. Run PostgreSQL and apply schema:
+2. Run PostgreSQL and either apply the baseline schema manually:
 
 ```bash
 psql "$DATABASE_URL" -f ../db/schema.sql
 ```
 
+Or skip that step and let the embedded migrations create the schema on startup.
+If you already have an existing schema from earlier `AutoMigrate` boots, set `BASELINE_EXISTING_SCHEMA=true` for the first migration-enabled run so the baseline migration is recorded without replaying the full SQL file.
+Subsequent migrations, such as `000002_add_payment_reference_indexes.sql`, will then apply normally on later boots.
+
 3. Install dependencies and run:
 
 ```bash
 go mod tidy
-AUTO_MIGRATE=false go run main.go
+RUN_MIGRATIONS=true go run main.go
 ```
 
 ## API

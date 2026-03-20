@@ -38,27 +38,14 @@ func main() {
 	}
 	database := db.Connect(cfg.DatabaseURL)
 
-	if os.Getenv("AUTO_MIGRATE") != "false" {
-		if err := database.AutoMigrate(
-			&models.Institution{},
-			&models.User{},
-			&models.Role{},
-			&models.Subscription{},
-			&models.Purchase{},
-			&models.Payment{},
-			&models.Course{},
-			&models.Module{},
-			&models.Lesson{},
-			&models.Progress{},
-			&models.Content{},
-			&models.Domain{},
-			&models.Subdomain{},
-			&models.Product{},
-			&models.AppSetting{},
-			&models.AuditLog{},
-			&models.ConsentHistory{},
-		); err != nil {
-			log.Fatalf("failed to migrate: %v", err)
+	if os.Getenv("RUN_MIGRATIONS") != "false" {
+		if os.Getenv("BASELINE_EXISTING_SCHEMA") == "true" {
+			if err := db.BaselineExistingSchema(database, "000001_initial_schema.sql"); err != nil {
+				log.Fatalf("failed to baseline existing schema: %v", err)
+			}
+		}
+		if err := db.ApplyMigrations(database); err != nil {
+			log.Fatalf("failed to apply migrations: %v", err)
 		}
 	}
 

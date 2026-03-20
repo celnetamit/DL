@@ -1,7 +1,3 @@
--- Baseline PostgreSQL schema for the LMS platform.
--- This mirrors backend-go/internal/db/migrations/000001_initial_schema.sql
--- and is kept for manual bootstrap / inspection workflows.
-
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 CREATE TABLE IF NOT EXISTS institutions (
@@ -129,8 +125,6 @@ CREATE TABLE IF NOT EXISTS payments (
 CREATE INDEX IF NOT EXISTS idx_payments_institution_id ON payments (institution_id);
 CREATE INDEX IF NOT EXISTS idx_payments_product_id ON payments (product_id);
 CREATE INDEX IF NOT EXISTS idx_payments_plan_code ON payments (plan_code);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_razorpay_order_id ON payments (razorpay_order_id) WHERE razorpay_order_id IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_razorpay_payment_id ON payments (razorpay_payment_id) WHERE razorpay_payment_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS purchases (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -159,8 +153,6 @@ CREATE INDEX IF NOT EXISTS idx_purchases_product_id ON purchases (product_id);
 CREATE INDEX IF NOT EXISTS idx_purchases_subscription_id ON purchases (subscription_id);
 CREATE INDEX IF NOT EXISTS idx_purchases_payment_id ON purchases (payment_id);
 CREATE INDEX IF NOT EXISTS idx_purchases_plan_code ON purchases (plan_code);
-CREATE INDEX IF NOT EXISTS idx_purchases_access_status ON purchases (access_status);
-CREATE INDEX IF NOT EXISTS idx_purchases_payment_status ON purchases (payment_status);
 
 CREATE TABLE IF NOT EXISTS contents (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
