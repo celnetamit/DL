@@ -21,6 +21,7 @@ type Subscription = {
 
 type User = { id: string; email: string; full_name: string };
 type Product = { id: string; name: string; tier: string; price: number };
+type Institution = { id: string; name: string; code?: string; student_limit?: number };
 
 const STATUS_COLORS: Record<string, string> = {
   active:    "bg-green-500/20 text-green-400 border-green-500/30",
@@ -32,6 +33,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 const EMPTY_FORM = {
   user_id: "",
+  institution_id: "",
   product_id: "",
   plan_code: "",
   status: "active",
@@ -43,6 +45,7 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
   const [subs, setSubs] = useState<Subscription[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState("");
   const [search, setSearch] = useState("");
@@ -71,7 +74,7 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
       const data = await apiFetch<User[]>("/api/v1/admin/users", {}, token);
       setUsers(data || []);
     } catch {
-      // silently fail — user may not have list-users permission
+      // Silently fail if the caller does not have permission to list users.
     }
   }, [token]);
 
@@ -82,7 +85,17 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
     } catch { /* silent */ }
   }, []);
 
-  useEffect(() => { fetchSubs(); fetchUsers(); fetchProducts(); }, [fetchSubs, fetchUsers, fetchProducts]);
+  const fetchInstitutions = useCallback(async () => {
+    if (!token) return;
+    try {
+      const data = await apiFetch<Institution[]>("/api/v1/institutions", {}, token);
+      setInstitutions(data || []);
+    } catch {
+      // silent
+    }
+  }, [token]);
+
+  useEffect(() => { fetchSubs(); fetchUsers(); fetchProducts(); fetchInstitutions(); }, [fetchSubs, fetchUsers, fetchProducts, fetchInstitutions]);
 
   const openCreate = () => {
     setEditingId(null);
@@ -95,6 +108,7 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
     setEditingId(sub.id);
     setForm({
       user_id: sub.user_id || "",
+      institution_id: sub.institution_id || "",
       product_id: sub.product_id || "",
       plan_code: sub.plan_code,
       status: sub.status,
@@ -144,16 +158,40 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
   const filtered = subs.filter((s) => {
     if (!search) return true;
     const q = search.toLowerCase();
+    const institutionName = institutions.find((institution) => institution.id === s.institution_id)?.name?.toLowerCase() || "";
     return (
       s.user_email?.toLowerCase().includes(q) ||
       s.user_name?.toLowerCase().includes(q) ||
       s.plan_code?.toLowerCase().includes(q) ||
-      s.razorpay_subscription_id?.toLowerCase().includes(q)
+      s.razorpay_subscription_id?.toLowerCase().includes(q) ||
+      institutionName.includes(q)
     );
   });
 
+  const institutionById = new Map(institutions.map((institution) => [institution.id, institution]));
+  const productById = new Map(products.map((product) => [product.id, product]));
+  const activeCount = subs.filter((sub) => sub.status === "active").length;
+  const institutionManagedCount = subs.filter((sub) => sub.institution_id).length;
+  const linkedProductCount = subs.filter((sub) => sub.product_id).length;
+
   return (
-    <div className="grid lg:grid-cols-[1fr_340px] gap-6 items-start min-w-0">
+    <div className="space-y-6 min-w-0">
+      <section className="grid gap-4 md:grid-cols-3">
+        <div className="glass rounded-2xl p-6 border border-dune/10">
+          <p className="text-[10px] uppercase tracking-widest text-dune/55">Active Subscriptions</p>
+          <p className="mt-4 text-4xl font-[var(--font-space)] text-ember">{activeCount}</p>
+        </div>
+        <div className="glass rounded-2xl p-6 border border-dune/10">
+          <p className="text-[10px] uppercase tracking-widest text-dune/55">Institution Managed</p>
+          <p className="mt-4 text-4xl font-[var(--font-space)] text-ember">{institutionManagedCount}</p>
+        </div>
+        <div className="glass rounded-2xl p-6 border border-dune/10">
+          <p className="text-[10px] uppercase tracking-widest text-dune/55">Linked Products</p>
+          <p className="mt-4 text-4xl font-[var(--font-space)] text-ember">{linkedProductCount}</p>
+        </div>
+      </section>
+
+      <div className="grid lg:grid-cols-[1fr_340px] gap-6 items-start min-w-0">
       {/* ── Left: List ── */}
       <div className="glass rounded-2xl p-6 min-w-0">
         {/* Header */}
@@ -212,6 +250,11 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
                     {s.user_email && s.user_name && (
                       <p className="text-xs text-dune/50 truncate">{s.user_email}</p>
                     )}
+                    {s.institution_id && (
+                      <p className="text-[11px] text-ember/80 truncate mt-1">
+                        Institution: {institutionById.get(s.institution_id)?.name || s.institution_id}
+                      </p>
+                    )}
                     <p className="text-xs font-mono text-dune/40 mt-0.5">Plan: {s.plan_code}</p>
                   </div>
                   <div className="text-right shrink-0">
@@ -264,6 +307,27 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
                 </label>
               )}
 
+              {!editingId && (
+                <label className="block space-y-1">
+                  <span className="text-xs uppercase tracking-widest text-dune/60">Institution</span>
+                  <select
+                    className="w-full rounded-xl bg-midnight border border-dune/20 px-3 py-2 text-sm text-dune"
+                    value={form.institution_id}
+                    onChange={(e) => setForm({ ...form, institution_id: e.target.value })}
+                  >
+                    <option value="">-- Direct User Ownership --</option>
+                    {institutions.map((institution) => (
+                      <option key={institution.id} value={institution.id}>
+                        {institution.name} {institution.code ? `(${institution.code})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-dune/40">
+                    Use institution ownership when the plan should unlock access for a managed student population.
+                  </p>
+                </label>
+              )}
+
               {/* Product picker */}
               <label className="block space-y-1">
                 <span className="text-xs uppercase tracking-widest text-dune/60">Linked Product</span>
@@ -275,7 +339,7 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
                   <option value="">-- No Product (Custom Plan) --</option>
                   {products.map((p) => (
                     <option key={p.id} value={p.id}>
-                      [{p.tier}] {p.name} — ₹{p.price}
+                      [{p.tier}] {p.name} - Rs. {p.price}
                     </option>
                   ))}
                 </select>
@@ -362,8 +426,8 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
             <div className="space-y-3">
               <div>
                 <p className="text-xs text-dune/40 uppercase tracking-widest">User</p>
-                <p className="font-semibold">{selectedSub.user_name || "—"}</p>
-                <p className="text-xs text-dune/60">{selectedSub.user_email || selectedSub.user_id || "—"}</p>
+                <p className="font-semibold">{selectedSub.user_name || "-"}</p>
+                <p className="text-xs text-dune/60">{selectedSub.user_email || selectedSub.user_id || "-"}</p>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -377,6 +441,18 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
                   </span>
                 </div>
               </div>
+              {selectedSub.product_id && (
+                <div>
+                  <p className="text-xs text-dune/40 uppercase tracking-widest">Product</p>
+                  <p className="text-sm">{productById.get(selectedSub.product_id)?.name || selectedSub.product_id}</p>
+                </div>
+              )}
+              {selectedSub.institution_id && (
+                <div>
+                  <p className="text-xs text-dune/40 uppercase tracking-widest">Institution Coverage</p>
+                  <p className="text-sm">{institutionById.get(selectedSub.institution_id)?.name || selectedSub.institution_id}</p>
+                </div>
+              )}
               {selectedSub.razorpay_subscription_id && (
                 <div>
                   <p className="text-xs text-dune/40 uppercase tracking-widest">Razorpay Sub ID</p>
@@ -400,7 +476,7 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
                 onClick={() => openEdit(selectedSub)}
                 className="w-full rounded-xl bg-dune/10 py-2 text-xs font-semibold hover:bg-dune/20"
               >
-                ✏️ Edit Subscription
+                Edit Subscription
               </button>
               {selectedSub.status === "active" && (
                 <button
@@ -414,7 +490,7 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
                 onClick={() => handleDelete(selectedSub.id)}
                 className="w-full rounded-xl border border-red-500/30 text-red-400 py-2 text-xs font-semibold hover:bg-red-500/10"
               >
-                🗑 Delete Record
+                Delete Record
               </button>
             </div>
           </div>
@@ -429,6 +505,7 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
             </button>
           </div>
         )}
+      </div>
       </div>
     </div>
   );

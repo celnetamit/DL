@@ -49,4 +49,7 @@ npm run dev
 - Razorpay webhooks are verified using `RAZORPAY_WEBHOOK_SECRET`.
 - The AI engine can be called directly by the frontend or routed through the backend.
 - All sensitive credentials are kept in `.env` files.
+- For production, set `APP_ENV=production`, `GIN_MODE=release`, a strong `JWT_SECRET`, explicit `APP_BASE_URL`, `NEXT_PUBLIC_API_URL`, and `TRUSTED_PROXIES`.
+- The backend now fails fast on insecure production config, pings the database in `/health`, and runs with HTTP server timeouts suitable for deployment behind a reverse proxy.
+- Docker images now run as non-root users, and `docker-compose.yml` includes service healthchecks plus frontend build args so production URLs are not baked incorrectly.
 # DL

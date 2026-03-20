@@ -35,7 +35,12 @@ POSTGRES_PASSWORD=your_secure_db_password
 POSTGRES_DB=aether_lms
 
 # Security Array
+APP_ENV=production
 JWT_SECRET=your_super_strong_production_jwt_secret
+APP_BASE_URL=https://journalslibrary.com
+NEXT_PUBLIC_API_URL=https://api.journalslibrary.com
+NEXT_PUBLIC_RAZORPAY_KEY_ID=rzp_live_yourkeyhere
+TRUSTED_PROXIES=127.0.0.1,::1
 
 # Razorpay Production Keys
 RAZORPAY_KEY_ID=rzp_live_yourkeyhere
@@ -77,14 +82,11 @@ Navigate to the generated Services section in your Coolify Dashboard:
 3. Because Go automatically bootstraps `GORM` schema migrations, the database will correctly build out tables immediately when the Backend starts up.
 
 ### Seed The Database (First Time Only!)
-Once deployment completes, the server lacks an initial Admin user to map access to. 
+The backend automatically seeds the initial `super_admin` account on first boot using:
 
-Run this command inside the `backend` Docker container shell (accessible directly via the Coolify Terminal console for the backend service):
+- `ADMIN_SEED_EMAIL`
+- `ADMIN_SEED_PASSWORD`
 
-```bash
-go run seed.go
-```
-This will inject the initial courses, default catalog, and generate an Admin account:
-- **Email:** admin@example.com / **Password:** admin123  *(You should log in immediately and change this via the DB or the dashboard if available).*
+Set both to strong production values before deployment. No separate `seed.go` step is required.
 
 🎉 **Finished! You are live natively at `journalslibrary.com`.**

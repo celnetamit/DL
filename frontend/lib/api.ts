@@ -290,3 +290,7 @@ export async function getMySubscriptions(token: string) {
 export async function getAdminAnalytics(token: string) {
   return apiFetch<any>("/api/v1/analytics", {}, token);
 }
+
+export async function getInstitutionOverview(institutionId: string, token: string) {
+  return apiFetch<any>(`/api/v1/institutions/${institutionId}/overview`, { cache: "no-store" }, token);
+}

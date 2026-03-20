@@ -155,6 +155,8 @@ export default function AdminDashboard() {
   const [analytics, setAnalytics] = useState({ total_users: 0, active_subscriptions: 0, total_revenue: 0 });
   const [globalDomains, setGlobalDomains] = useState<any[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
   const itemsPerPage = 20;
 
   const [importProgress, setImportProgress] = useState<{
@@ -169,9 +171,17 @@ export default function AdminDashboard() {
   const [formState, setFormState] = useState<Record<string, string>>(() => emptyForm(category.fields));
 
   const currentItems = itemsByCategory[category.key] || [];
+  const filteredItems = currentItems.filter((item) => {
+    const matchesSearch =
+      !searchTerm ||
+      item.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      Object.values(item).some((value) => String(value || "").toLowerCase().includes(searchTerm.toLowerCase()));
+    const matchesStatus = !statusFilter || item.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
   
-  const totalPages = Math.ceil(currentItems.length / itemsPerPage);
-  const paginatedItems = currentItems.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
+  const paginatedItems = filteredItems.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const loadData = async (catKey: string) => {
     if (!token) return;
@@ -213,6 +223,8 @@ export default function AdminDashboard() {
     setEditingId(null);
     setErrorMsg(null);
     setIsModalOpen(false);
+    setSearchTerm("");
+    setStatusFilter("");
   };
 
   const handleCategoryChange = (key: string) => {
@@ -478,10 +490,29 @@ export default function AdminDashboard() {
               </p>
             </div>
             <div className="text-xs text-dune/60">
-              {loading ? "Loading..." : `${currentItems.length} items`}
+              {loading ? "Loading..." : `${filteredItems.length} of ${currentItems.length} items`}
             </div>
           </div>
         </header>
+
+        <section className="grid gap-4 md:grid-cols-3">
+          <div className="glass rounded-2xl p-5 border border-dune/10">
+            <p className="text-[10px] uppercase tracking-widest text-dune/55">Total Records</p>
+            <p className="mt-3 text-3xl font-[var(--font-space)] text-ember">{currentItems.length}</p>
+          </div>
+          <div className="glass rounded-2xl p-5 border border-dune/10">
+            <p className="text-[10px] uppercase tracking-widest text-dune/55">Published</p>
+            <p className="mt-3 text-3xl font-[var(--font-space)] text-ember">
+              {currentItems.filter((item) => item.status === "Published").length}
+            </p>
+          </div>
+          <div className="glass rounded-2xl p-5 border border-dune/10">
+            <p className="text-[10px] uppercase tracking-widest text-dune/55">Draft / Archived</p>
+            <p className="mt-3 text-3xl font-[var(--font-space)] text-ember">
+              {currentItems.filter((item) => item.status !== "Published").length}
+            </p>
+          </div>
+        </section>
 
         {importProgress && importProgress.isImporting && (
           <div className="glass rounded-2xl p-6 border border-ember/30 bg-midnight/80">
@@ -505,7 +536,29 @@ export default function AdminDashboard() {
           <div className="glass rounded-2xl p-6 min-w-0">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h4 className="text-lg font-semibold">Existing Records</h4>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <input
+                  value={searchTerm}
+                  onChange={(event) => {
+                    setCurrentPage(1);
+                    setSearchTerm(event.target.value);
+                  }}
+                  placeholder="Search title or metadata..."
+                  className="rounded-full border border-dune/20 bg-midnight/40 px-3 py-1.5 text-xs text-dune outline-none"
+                />
+                <select
+                  value={statusFilter}
+                  onChange={(event) => {
+                    setCurrentPage(1);
+                    setStatusFilter(event.target.value);
+                  }}
+                  className="rounded-full border border-dune/20 bg-midnight/40 px-3 py-1.5 text-xs text-dune outline-none"
+                >
+                  <option value="">All Statuses</option>
+                  <option value="Draft">Draft</option>
+                  <option value="Published">Published</option>
+                  <option value="Archived">Archived</option>
+                </select>
                 <input type="file" id="csv-upload" className="hidden" accept=".csv" onChange={handleImport} disabled={loading} />
                 <label htmlFor="csv-upload" className="cursor-pointer rounded-full bg-dune/10 px-3 py-1 text-xs hover:bg-dune/20 transition disabled:opacity-50">
                   Import CSV
@@ -537,6 +590,13 @@ export default function AdminDashboard() {
                       </td>
                     </tr>
                   )}
+                  {filteredItems.length === 0 && currentItems.length > 0 && !loading && (
+                    <tr>
+                      <td colSpan={10} className="px-4 py-8 text-center text-dune/60">
+                        No records match the current search or status filters.
+                      </td>
+                    </tr>
+                  )}
                   {paginatedItems.map((item) => (
                     <tr key={item.id} className="hover:bg-dune/5 transition-colors">
                       <td className="px-4 py-3 max-w-[200px] truncate">
@@ -546,7 +606,7 @@ export default function AdminDashboard() {
                       {category.fields.map((field) => (
                         <td key={field.name} className="px-4 py-3 max-w-[150px] truncate" title={item[field.name]}>
                           <span className="text-dune/80 text-xs">
-                            {(field.name === "subdomain" && !item.domain) ? "—" : (item[field.name] || "—")}
+                            {(field.name === "subdomain" && !item.domain) ? "-" : (item[field.name] || "-")}
                           </span>
                         </td>
                       ))}
@@ -564,7 +624,7 @@ export default function AdminDashboard() {
               {totalPages > 1 && (
                 <div className="mt-4 flex items-center justify-between border-t border-dune/10 pt-4">
                   <p className="text-xs text-dune/60">
-                    Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, currentItems.length)} of {currentItems.length} records
+                    Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, filteredItems.length)} of {filteredItems.length} records
                   </p>
                   <div className="flex gap-2">
                     <button

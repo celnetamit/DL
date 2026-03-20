@@ -1,163 +1,189 @@
 package handlers
 
 import (
-  "log"
-  "net/http"
-  "strings"
-  "time"
+	"log"
+	"net/http"
+	"strings"
+	"time"
 
-  "lms-backend/internal/models"
-  "lms-backend/internal/utils"
+	"lms-backend/internal/authz"
+	"lms-backend/internal/models"
+	"lms-backend/internal/utils"
 
-  "github.com/gin-gonic/gin"
-  "github.com/golang-jwt/jwt/v5"
-  "golang.org/x/crypto/bcrypt"
+	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type registerRequest struct {
-  Email    string `json:"email" binding:"required,email"`
-  Password string `json:"password" binding:"required,min=6"`
-  FullName string `json:"full_name" binding:"required"`
-  Role     string `json:"role"`
-  Code     string `json:"code"`
+	Email    string `json:"email" binding:"required,email"`
+	Password string `json:"password" binding:"required,min=6"`
+	FullName string `json:"full_name" binding:"required"`
+	Role     string `json:"role"`
+	Code     string `json:"code"`
 }
 
 type loginRequest struct {
-  Email    string `json:"email" binding:"required,email"`
-  Password string `json:"password" binding:"required"`
+	Email    string `json:"email" binding:"required,email"`
+	Password string `json:"password" binding:"required"`
 }
 
 func (h *Handler) Register(c *gin.Context) {
-  var req registerRequest
-  if err := c.ShouldBindJSON(&req); err != nil {
-    utils.JSON(c, http.StatusBadRequest, "invalid request", gin.H{"error": err.Error()})
-    return
-  }
+	var req registerRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.JSON(c, http.StatusBadRequest, "invalid request", gin.H{"error": err.Error()})
+		return
+	}
 
-  var existing models.User
-  if err := h.DB.Where("email = ?", req.Email).First(&existing).Error; err == nil {
-    utils.JSON(c, http.StatusConflict, "email already registered", nil)
-    return
-  }
+	var existing models.User
+	if err := h.DB.Where("email = ?", req.Email).First(&existing).Error; err == nil {
+		utils.JSON(c, http.StatusConflict, "email already registered", nil)
+		return
+	}
 
-  passwordHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
-  if err != nil {
-    utils.JSON(c, http.StatusInternalServerError, "failed to secure password", nil)
-    return
-  }
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		utils.JSON(c, http.StatusInternalServerError, "failed to secure password", nil)
+		return
+	}
 
-  hashStr := string(passwordHash)
-  user := models.User{
-    Email:        req.Email,
-    PasswordHash: &hashStr,
-    FullName:     req.FullName,
-    Status:       "active",
-  }
+	hashStr := string(passwordHash)
+	user := models.User{
+		Email:        req.Email,
+		PasswordHash: &hashStr,
+		FullName:     req.FullName,
+		Status:       "active",
+	}
 
-  roleName := req.Role
-  if roleName == "" {
-    roleName = "student"
-  }
+	roleName := req.Role
+	if roleName == "" {
+		roleName = authz.RoleStudent
+	}
 
-  var role models.Role
-  if err := h.DB.Where("name = ?", roleName).First(&role).Error; err != nil {
-    utils.JSON(c, http.StatusBadRequest, "invalid role", nil)
-    return
-  }
+	allowedSelfRoles := map[string]struct{}{}
+	for _, role := range authz.SelfRegisterableRoles() {
+		allowedSelfRoles[role] = struct{}{}
+	}
+	if _, ok := allowedSelfRoles[roleName]; !ok {
+		utils.JSON(c, http.StatusBadRequest, "invalid public registration role", gin.H{
+			"allowed_roles": authz.SelfRegisterableRoles(),
+		})
+		return
+	}
 
-  // B2B Multi-tenant linking
-  var inst models.Institution
-  if req.Code != "" {
-    if err := h.DB.Where("code = ?", req.Code).First(&inst).Error; err == nil {
-      user.InstitutionID = &inst.ID
-    }
-  } else {
-    parts := strings.Split(req.Email, "@")
-    if len(parts) == 2 {
-       domain := parts[1]
-       if err := h.DB.Where("domain = ?", domain).First(&inst).Error; err == nil {
-         user.InstitutionID = &inst.ID
-       }
-    }
-  }
+	var role models.Role
+	if err := h.DB.Where("name = ?", roleName).First(&role).Error; err != nil {
+		utils.JSON(c, http.StatusBadRequest, "invalid role", nil)
+		return
+	}
 
-  if err := h.DB.Create(&user).Error; err != nil {
-    log.Printf("DB error creating user: %v", err)
-    utils.JSON(c, http.StatusInternalServerError, "failed to create user", nil)
-    return
-  }
+	// B2B Multi-tenant linking
+	var inst models.Institution
+	linkedInstitution := false
+	if req.Code != "" {
+		if err := h.DB.Where("code = ?", req.Code).First(&inst).Error; err == nil {
+			user.InstitutionID = &inst.ID
+			linkedInstitution = true
+		}
+	} else {
+		parts := strings.Split(req.Email, "@")
+		if len(parts) == 2 {
+			domain := parts[1]
+			if err := h.DB.Where("domain = ?", domain).First(&inst).Error; err == nil {
+				user.InstitutionID = &inst.ID
+				linkedInstitution = true
+			}
+		}
+	}
 
-  if err := h.DB.Model(&user).Association("Roles").Append(&role); err != nil {
-    utils.JSON(c, http.StatusInternalServerError, "failed to assign role", nil)
-    return
-  }
+	if linkedInstitution && inst.StudentLimit > 0 {
+		var memberCount int64
+		if err := h.DB.Model(&models.User{}).Where("institution_id = ?", inst.ID).Count(&memberCount).Error; err == nil && memberCount >= int64(inst.StudentLimit) {
+			utils.JSON(c, http.StatusForbidden, "institution student limit reached", gin.H{
+				"institution_id": inst.ID,
+				"student_limit":  inst.StudentLimit,
+			})
+			return
+		}
+	}
 
-  token, err := h.createToken(user.ID, []string{role.Name})
-  if err != nil {
-    utils.JSON(c, http.StatusInternalServerError, "failed to create token", nil)
-    return
-  }
+	if err := h.DB.Create(&user).Error; err != nil {
+		log.Printf("DB error creating user: %v", err)
+		utils.JSON(c, http.StatusInternalServerError, "failed to create user", nil)
+		return
+	}
 
-  utils.JSON(c, http.StatusCreated, "registered", gin.H{"token": token, "user": user})
+	if err := h.DB.Model(&user).Association("Roles").Append(&role); err != nil {
+		utils.JSON(c, http.StatusInternalServerError, "failed to assign role", nil)
+		return
+	}
 
-  // Audit Log
-  h.LogActivity(c, &user.ID, "REGISTER", "USER", user.ID, "New user registered")
+	token, err := h.createToken(user.ID, []string{role.Name})
+	if err != nil {
+		utils.JSON(c, http.StatusInternalServerError, "failed to create token", nil)
+		return
+	}
+
+	utils.JSON(c, http.StatusCreated, "registered", gin.H{"token": token, "user": user})
+
+	// Audit Log
+	h.LogActivity(c, &user.ID, "REGISTER", "USER", user.ID, "New user registered")
 }
 
 func (h *Handler) Login(c *gin.Context) {
-  var req loginRequest
-  if err := c.ShouldBindJSON(&req); err != nil {
-    utils.JSON(c, http.StatusBadRequest, "invalid request", gin.H{"error": err.Error()})
-    return
-  }
+	var req loginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.JSON(c, http.StatusBadRequest, "invalid request", gin.H{"error": err.Error()})
+		return
+	}
 
-  var user models.User
-  if err := h.DB.Preload("Roles").Where("email = ?", req.Email).First(&user).Error; err != nil {
-    h.LogActivity(c, nil, "LOGIN_FAILURE", "USER", req.Email, "User not found")
-    utils.JSON(c, http.StatusUnauthorized, "invalid credentials", nil)
-    return
-  }
+	var user models.User
+	if err := h.DB.Preload("Roles").Where("email = ?", req.Email).First(&user).Error; err != nil {
+		h.LogActivity(c, nil, "LOGIN_FAILURE", "USER", req.Email, "User not found")
+		utils.JSON(c, http.StatusUnauthorized, "invalid credentials", nil)
+		return
+	}
 
-  if user.PasswordHash == nil {
-    utils.JSON(c, http.StatusUnauthorized, "account uses Google sign-in, no password set", nil)
-    return
-  }
-  if err := bcrypt.CompareHashAndPassword([]byte(*user.PasswordHash), []byte(req.Password)); err != nil {
-    h.LogActivity(c, &user.ID, "LOGIN_FAILURE", "USER", user.ID, "Invalid password")
-    utils.JSON(c, http.StatusUnauthorized, "invalid credentials", nil)
-    return
-  }
+	if user.PasswordHash == nil {
+		utils.JSON(c, http.StatusUnauthorized, "account uses Google sign-in, no password set", nil)
+		return
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(*user.PasswordHash), []byte(req.Password)); err != nil {
+		h.LogActivity(c, &user.ID, "LOGIN_FAILURE", "USER", user.ID, "Invalid password")
+		utils.JSON(c, http.StatusUnauthorized, "invalid credentials", nil)
+		return
+	}
 
-  now := time.Now().UTC()
-  h.DB.Model(&user).Updates(map[string]interface{}{
-    "last_login_at": now,
-    "last_active_at": now,
-  })
+	now := time.Now().UTC()
+	h.DB.Model(&user).Updates(map[string]interface{}{
+		"last_login_at":  now,
+		"last_active_at": now,
+	})
 
-  roleNames := make([]string, 0, len(user.Roles))
-  for _, role := range user.Roles {
-    roleNames = append(roleNames, role.Name)
-  }
+	roleNames := make([]string, 0, len(user.Roles))
+	for _, role := range user.Roles {
+		roleNames = append(roleNames, role.Name)
+	}
 
-  token, err := h.createToken(user.ID, roleNames)
-  if err != nil {
-    utils.JSON(c, http.StatusInternalServerError, "failed to create token", nil)
-    return
-  }
+	token, err := h.createToken(user.ID, roleNames)
+	if err != nil {
+		utils.JSON(c, http.StatusInternalServerError, "failed to create token", nil)
+		return
+	}
 
-  utils.JSON(c, http.StatusOK, "logged in", gin.H{"token": token, "user": user})
+	utils.JSON(c, http.StatusOK, "logged in", gin.H{"token": token, "user": user})
 
-  // Audit Log
-  h.LogActivity(c, &user.ID, "LOGIN_SUCCESS", "USER", user.ID, "User logged in via password")
+	// Audit Log
+	h.LogActivity(c, &user.ID, "LOGIN_SUCCESS", "USER", user.ID, "User logged in via password")
 }
 
 func (h *Handler) createToken(userID string, roles []string) (string, error) {
-  claims := jwt.MapClaims{
-    "sub":   userID,
-    "roles": roles,
-    "exp":   time.Now().Add(24 * time.Hour).Unix(),
-    "iat":   time.Now().Unix(),
-  }
-  token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-  return token.SignedString([]byte(h.Config.JwtSecret))
+	claims := jwt.MapClaims{
+		"sub":   userID,
+		"roles": roles,
+		"exp":   time.Now().Add(24 * time.Hour).Unix(),
+		"iat":   time.Now().Unix(),
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte(h.Config.JwtSecret))
 }

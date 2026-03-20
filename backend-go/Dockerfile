@@ -2,23 +2,26 @@ FROM golang:1.23-alpine AS builder
 
 WORKDIR /app
 
-# Download dependencies
+RUN apk add --no-cache ca-certificates tzdata
+
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy application source code
 COPY . .
 
-# Build the executable
-RUN CGO_ENABLED=0 GOOS=linux go build -o main main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/main ./main.go
 
-# Minimal production image
-FROM alpine:latest
+FROM alpine:3.20
 
 WORKDIR /app
 
-# Copy the binary from builder
-COPY --from=builder /app/main .
+RUN apk add --no-cache ca-certificates tzdata && \
+    addgroup -S app && \
+    adduser -S -G app app
+
+COPY --from=builder /out/main ./main
+
+USER app
 
 EXPOSE 8080
 
