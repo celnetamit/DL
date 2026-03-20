@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api";
+import Toast from "@/components/Toast";
 
 type Setting = {
   id: string;
@@ -50,6 +51,7 @@ export default function SettingsPanel() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
 
   const fetchSettings = useCallback(async () => {
     if (!token) return;
@@ -83,11 +85,12 @@ export default function SettingsPanel() {
         body: JSON.stringify(payload),
       }, token);
       setSaved(true);
+      setToast({ message: "Settings saved successfully.", tone: "success" });
       setTimeout(() => setSaved(false), 3000);
       fetchSettings();
     } catch (err) {
       console.error(err);
-      alert("Failed to save settings");
+      setToast({ message: "Failed to save settings", tone: "error" });
     } finally {
       setSaving(false);
     }
@@ -100,6 +103,7 @@ export default function SettingsPanel() {
 
   return (
     <div className="max-w-3xl space-y-6">
+      {toast && <Toast message={toast.message} tone={toast.tone} onClose={() => setToast(null)} />}
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-[var(--font-space)]">API Configuration</h3>

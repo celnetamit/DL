@@ -5,8 +5,9 @@ export const dynamic = "force-dynamic";
 import { useState, useEffect } from "react";
 import Script from "next/script";
 import { useAuth } from "@/lib/auth";
-import { createOrder, apiFetch } from "@/lib/api";
+import { createOrder, apiFetch, verifyOrderPayment } from "@/lib/api";
 import { useRouter } from "next/navigation";
+import Toast from "@/components/Toast";
 
 // Define product type
 type Product = {
@@ -23,6 +24,7 @@ export default function PricingPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [fetchingProducts, setFetchingProducts] = useState(true);
   const [processingPlan, setProcessingPlan] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -58,7 +60,7 @@ export default function PricingPage() {
 
   const handleCheckout = async (plan: Product) => {
     if (!token) {
-      alert("Please login first to make a purchase.");
+      setToast({ message: "Please sign in first to make a purchase.", tone: "error" });
       router.push("/dashboard?redirect=/pricing");
       return;
     }
@@ -74,9 +76,22 @@ export default function PricingPage() {
         name: "Digital Library Pro Checkout",
         description: `Purchasing: ${plan.name}`,
         order_id: res.order.id, 
-        handler: function (response: any) {
-             alert(`Payment captured successfully! Processing...`);
-             router.push("/dashboard");
+        handler: async function (response: any) {
+             try {
+               await verifyOrderPayment({
+                 razorpay_payment_id: response.razorpay_payment_id,
+                 razorpay_order_id: response.razorpay_order_id,
+                 razorpay_signature: response.razorpay_signature,
+               }, token);
+               setToast({ message: "Payment captured successfully and access has been activated.", tone: "success" });
+               router.push("/dashboard?purchase=success");
+             } catch (error: any) {
+               setToast({
+                 message: error?.message || "Payment succeeded, but access activation is still processing. Please refresh your dashboard shortly.",
+                 tone: "error",
+               });
+               router.push("/dashboard?purchase=pending");
+             }
         },
         prefill: {
             name: "Library User",
@@ -90,12 +105,12 @@ export default function PricingPage() {
       // @ts-ignore
       const rzp1 = new window.Razorpay(options);
       rzp1.on("payment.failed", function (response: any){
-              alert(`Payment Failed: ${response.error.description}`);
+              setToast({ message: `Payment failed: ${response.error.description}`, tone: "error" });
       });
       rzp1.open();
 
     } catch (err: any) {
-      alert(err.message || "Checkout failed");
+      setToast({ message: err.message || "Checkout failed", tone: "error" });
     } finally {
       setProcessingPlan(null);
     }
@@ -143,6 +158,11 @@ export default function PricingPage() {
     <main className="min-h-screen px-6 py-20 flex flex-col items-center">
       <Script src="https://checkout.razorpay.com/v1/checkout.js" />
       <div className="max-w-6xl w-full">
+        {toast && (
+          <div className="mb-6">
+            <Toast message={toast.message} tone={toast.tone} onClose={() => setToast(null)} />
+          </div>
+        )}
         <div className="text-center mb-16">
           <p className="text-sm uppercase tracking-[0.3em] text-ember">Explore Content</p>
           <h1 className="font-[var(--font-space)] text-4xl mt-3">Product Catalog</h1>

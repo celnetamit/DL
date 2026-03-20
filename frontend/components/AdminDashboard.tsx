@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { fetchContents, createContent, updateContent, deleteContent, getAdminAnalytics, apiFetch } from "@/lib/api";
+import Toast from "@/components/Toast";
 
 const CATEGORIES = [
   {
@@ -157,6 +158,8 @@ export default function AdminDashboard() {
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const itemsPerPage = 20;
 
   const [importProgress, setImportProgress] = useState<{
@@ -402,7 +405,7 @@ export default function AdminDashboard() {
         setImportProgress(prev => prev ? { ...prev, processed: i, etaSeconds } : null);
       }
       
-      alert(`Import completed: ${imports} records processed.`);
+      setToast({ message: `Import completed: ${imports} records processed.`, tone: "success" });
       await loadData(category.key);
       setLoading(false);
       setImportProgress(null);
@@ -413,7 +416,6 @@ export default function AdminDashboard() {
 
   const handleDelete = async (id: string) => {
     if (!token) return;
-    if (!confirm("Are you sure you want to delete this item?")) return;
     try {
       await deleteContent(id, token);
       setItemsByCategory((prev) => ({
@@ -423,9 +425,12 @@ export default function AdminDashboard() {
       if (editingId === id) {
         resetForm();
       }
+      setPendingDeleteId(null);
+      setToast({ message: "Record deleted successfully.", tone: "success" });
     } catch (err) {
       console.error(err);
       setErrorMsg("Failed to delete item.");
+      setToast({ message: "Failed to delete item.", tone: "error" });
     }
   };
 
@@ -441,6 +446,7 @@ export default function AdminDashboard() {
 
   return (
     <>
+      {toast && <Toast message={toast.message} tone={toast.tone} onClose={() => setToast(null)} />}
       <section className="grid gap-6 md:grid-cols-3 mb-8 min-w-0 w-full">
         <div className="glass rounded-2xl p-6 border border-dune/20">
           <p className="text-[10px] font-bold uppercase tracking-widest text-dune/60">Total Users</p>
@@ -613,7 +619,14 @@ export default function AdminDashboard() {
                       <td className="px-4 py-3 text-right">
                         <div className="flex justify-end gap-2">
                           <button onClick={() => handleEdit(item)} className="rounded bg-dune/10 px-2 py-1 text-xs hover:bg-dune/20 transition">Edit</button>
-                          <button onClick={() => handleDelete(item.id)} className="rounded bg-ember/10 text-ember px-2 py-1 text-xs hover:bg-ember/20 transition">Delete</button>
+                          {pendingDeleteId === item.id ? (
+                            <>
+                              <button onClick={() => handleDelete(item.id)} className="rounded bg-ember/10 text-ember px-2 py-1 text-xs hover:bg-ember/20 transition">Confirm</button>
+                              <button onClick={() => setPendingDeleteId(null)} className="rounded bg-dune/10 px-2 py-1 text-xs hover:bg-dune/20 transition">Cancel</button>
+                            </>
+                          ) : (
+                            <button onClick={() => setPendingDeleteId(item.id)} className="rounded bg-ember/10 text-ember px-2 py-1 text-xs hover:bg-ember/20 transition">Delete</button>
+                          )}
                         </div>
                       </td>
                     </tr>

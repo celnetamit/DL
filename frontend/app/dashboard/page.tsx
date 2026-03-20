@@ -16,8 +16,9 @@ import {
   Users,
 } from "lucide-react";
 import AuthPanel from "@/components/AuthPanel";
+import Toast from "@/components/Toast";
 import { useAuth } from "@/lib/auth";
-import { apiFetch, getInstitutionOverview, getMySubscriptions } from "@/lib/api";
+import { apiFetch, getInstitutionOverview, getMyPayments, getMyPurchases, getMySubscriptions } from "@/lib/api";
 import { useCompliance } from "@/hooks/useCompliance";
 
 type Product = {
@@ -83,6 +84,24 @@ type InstitutionOverview = {
     created_at: string;
     content_types?: string[];
   }>;
+  payments: Array<{
+    id: string;
+    purchase_id?: string;
+    subscription_id?: string;
+    product_id?: string;
+    plan_code: string;
+    description?: string;
+    razorpay_payment_id?: string;
+    razorpay_order_id?: string;
+    amount: number;
+    currency: string;
+    status: string;
+    created_at: string;
+    product_name?: string;
+    product_tier?: string;
+    subscription_status?: string;
+    access_status?: string;
+  }>;
   product_access: Array<{
     product_id: string;
     name: string;
@@ -99,6 +118,50 @@ type InstitutionOverview = {
     students: number;
     active_learners: number;
   }>;
+};
+
+type PaymentRecord = {
+  id: string;
+  purchase_id?: string;
+  subscription_id?: string;
+  product_id?: string;
+  plan_code: string;
+  description?: string;
+  razorpay_payment_id?: string;
+  razorpay_order_id?: string;
+  amount: number;
+  currency: string;
+  status: string;
+  created_at: string;
+  product_name?: string;
+  product_tier?: string;
+  subscription_status?: string;
+  access_status?: string;
+};
+
+type PurchaseRecord = {
+  id: string;
+  user_id?: string;
+  institution_id?: string;
+  product_id?: string;
+  subscription_id?: string;
+  payment_id?: string;
+  plan_code: string;
+  purchase_type: string;
+  access_status: string;
+  payment_status: string;
+  amount: number;
+  currency: string;
+  activated_at?: string | null;
+  access_ends_at?: string | null;
+  razorpay_order_id?: string;
+  razorpay_payment_id?: string;
+  created_at: string;
+  product_name?: string;
+  product_tier?: string;
+  subscription_status?: string;
+  user_email?: string;
+  institution_name?: string;
 };
 
 const STATUS_STYLES: Record<string, string> = {
@@ -132,23 +195,32 @@ function clampPercent(value: number) {
 
 export default function DashboardPage() {
   const { token, user } = useAuth();
-  const { exportData, deleteAccount } = useCompliance();
+  const { exportData, deleteAccount, message: complianceMessage, messageTone: complianceMessageTone, clearMessage } = useCompliance();
   const [subs, setSubs] = useState<any[]>([]);
+  const [purchases, setPurchases] = useState<PurchaseRecord[]>([]);
+  const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [institutionOverview, setInstitutionOverview] = useState<InstitutionOverview | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [memberBusyId, setMemberBusyId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
+  const [pendingCancelId, setPendingCancelId] = useState<string | null>(null);
+  const [pendingDeleteAccount, setPendingDeleteAccount] = useState(false);
 
   const isInstitutionUser = Boolean(user?.institution_id);
 
   const fetchDashboardData = async () => {
     if (!token) return;
     try {
-      const [subscriptions, productCatalog] = await Promise.all([
+      const [subscriptions, purchaseHistory, paymentHistory, productCatalog] = await Promise.all([
         getMySubscriptions(token),
+        getMyPurchases(token),
+        getMyPayments(token),
         apiFetch<Product[]>("/api/v1/products", { cache: "no-store" }),
       ]);
       setSubs(subscriptions || []);
+      setPurchases(purchaseHistory || []);
+      setPayments(paymentHistory || []);
       setProducts(productCatalog || []);
     } catch (error) {
       console.error(error);
@@ -172,15 +244,17 @@ export default function DashboardPage() {
   }, [token, user?.institution_id]);
 
   const handleCancel = async (subId: string) => {
-    if (!token || !confirm("Are you sure you want to cancel this active subscription?")) return;
+    if (!token) return;
     setCancellingId(subId);
     try {
       await apiFetch(`/api/v1/subscriptions/${subId}/cancel`, { method: "PUT" }, token);
       await fetchDashboardData();
+      setToast({ message: "Subscription cancelled successfully.", tone: "success" });
     } catch (err: any) {
-      alert(err.message || "Failed to cancel subscription");
+      setToast({ message: err.message || "Failed to cancel subscription", tone: "error" });
     } finally {
       setCancellingId(null);
+      setPendingCancelId(null);
     }
   };
 
@@ -198,8 +272,9 @@ export default function DashboardPage() {
         token,
       );
       await fetchDashboardData();
+      setToast({ message: `Student access ${nextStatus === "active" ? "restored" : "paused"} successfully.`, tone: "success" });
     } catch (err: any) {
-      alert(err.message || "Failed to update student access");
+      setToast({ message: err.message || "Failed to update student access", tone: "error" });
     } finally {
       setMemberBusyId(null);
     }
@@ -227,7 +302,9 @@ export default function DashboardPage() {
   );
 
   const activeSubs = enrichedSubscriptions.filter((sub) => sub.status === "active");
-  const totalBilling = enrichedSubscriptions.reduce((sum, sub) => sum + (sub.price || 0), 0);
+  const activePurchases = purchases.filter((purchase) => purchase.access_status === "active");
+  const capturedPayments = payments.filter((payment) => payment.status === "captured");
+  const totalBilling = capturedPayments.reduce((sum, payment) => sum + payment.amount / 100, 0);
   const institutionSummary = institutionOverview?.summary;
   const memberLimit = institutionSummary?.student_limit || 0;
   const topMembers = institutionOverview?.members?.slice(0, 8) || [];
@@ -268,7 +345,7 @@ export default function DashboardPage() {
         },
         {
           label: "Content Access",
-          value: activeSubs.length > 0 ? "Unlocked" : "Limited",
+          value: activePurchases.length > 0 ? "Unlocked" : "Limited",
           note: "Your current access level across the catalog",
           icon: ShieldCheck,
         },
@@ -289,6 +366,8 @@ export default function DashboardPage() {
   return (
     <main className="px-6 py-10 min-h-screen">
       <div className="mx-auto flex max-w-7xl flex-col gap-8">
+        {toast && <Toast message={toast.message} tone={toast.tone} onClose={() => setToast(null)} />}
+        {complianceMessage && <Toast message={complianceMessage} tone={complianceMessageTone} onClose={clearMessage} />}
         <header className="flex flex-col gap-4 rounded-[2rem] border border-dune/10 bg-[radial-gradient(circle_at_top_left,_rgba(255,132,77,0.18),_transparent_38%),linear-gradient(135deg,rgba(10,12,18,0.96),rgba(17,22,31,0.96))] p-8 shadow-2xl shadow-midnight/30 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-sm uppercase tracking-[0.3em] text-ember">
@@ -504,6 +583,53 @@ export default function DashboardPage() {
                     ))
                   )}
                 </div>
+
+                <div className="mt-8 border-t border-dune/10 pt-6">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.25em] text-ember">Billing Events</p>
+                      <h3 className="mt-2 font-[var(--font-space)] text-lg">Captured payments and purchase trail</h3>
+                    </div>
+                    <span className="rounded-full border border-dune/15 px-3 py-1 text-xs uppercase tracking-widest text-dune/60">
+                      {institutionOverview.payments.length} payments
+                    </span>
+                  </div>
+                  <div className="mt-5 space-y-3">
+                    {institutionOverview.payments.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-dune/15 bg-midnight/30 p-6 text-sm text-dune/60">
+                        No billing events are available yet for this institution.
+                      </div>
+                    ) : (
+                      institutionOverview.payments.map((payment) => (
+                        <div key={payment.id} className="rounded-2xl border border-dune/10 bg-midnight/30 p-4">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="font-semibold text-dune">
+                                {payment.product_name || payment.description || payment.plan_code}
+                              </p>
+                              <p className="mt-1 text-xs uppercase tracking-widest text-dune/45">
+                                {payment.product_tier || "custom"} purchase
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <span className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest ${STATUS_STYLES[payment.status] || STATUS_STYLES.halted}`}>
+                                {payment.status}
+                              </span>
+                              <p className="mt-2 text-sm font-semibold text-ember">
+                                {formatCurrency(payment.amount / 100, payment.currency || "INR")}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="mt-4 grid gap-3 text-xs text-dune/60 md:grid-cols-3">
+                            <p>Purchased: {formatDate(payment.created_at)}</p>
+                            <p>Order: {payment.razorpay_order_id || "-"}</p>
+                            <p>Access: {payment.access_status || payment.subscription_status || "pending"}</p>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div className="flex flex-col gap-6">
@@ -631,17 +757,17 @@ export default function DashboardPage() {
             <div className="glass rounded-3xl p-6">
               <div className="flex items-center justify-between gap-4">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.25em] text-ember">Subscriptions</p>
-                  <h2 className="mt-2 font-[var(--font-space)] text-2xl">My plans and access history</h2>
+                  <p className="text-xs uppercase tracking-[0.25em] text-ember">Licenses & Access</p>
+                  <h2 className="mt-2 font-[var(--font-space)] text-2xl">My purchases and access history</h2>
                 </div>
               </div>
 
               <div className="mt-6 space-y-4">
-                {enrichedSubscriptions.length === 0 ? (
+                {purchases.length === 0 ? (
                   <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-dune/20 bg-midnight/20 p-10 text-center">
-                    <p className="text-base font-medium text-dune">No active plans yet</p>
+                    <p className="text-base font-medium text-dune">No purchases yet</p>
                     <p className="mt-2 max-w-sm text-sm text-dune/60">
-                      Subscribe to a product to unlock full library access and see your plan history here.
+                      Purchase a product to unlock library access and see your license history here.
                     </p>
                     <Link
                       href="/pricing"
@@ -651,40 +777,111 @@ export default function DashboardPage() {
                     </Link>
                   </div>
                 ) : (
-                  enrichedSubscriptions.map((sub) => (
-                    <div key={sub.id} className="rounded-2xl border border-dune/10 bg-midnight/30 p-5">
+                  purchases.map((purchase) => (
+                    <div key={purchase.id} className="rounded-2xl border border-dune/10 bg-midnight/30 p-5">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                          <p className="text-lg font-semibold text-dune">{sub.product_name}</p>
+                          <p className="text-lg font-semibold text-dune">
+                            {purchase.product_name || purchase.plan_code}
+                          </p>
                           <p className="mt-1 text-xs uppercase tracking-widest text-dune/45">
-                            {sub.product_tier} · {sub.plan_code}
+                            {purchase.product_tier || "custom"} · {purchase.purchase_type}
                           </p>
                         </div>
                         <div className="text-right">
-                          <span className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest ${STATUS_STYLES[sub.status] || STATUS_STYLES.halted}`}>
-                            {sub.status}
+                          <span className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest ${STATUS_STYLES[purchase.access_status] || STATUS_STYLES.halted}`}>
+                            {purchase.access_status}
                           </span>
                           <p className="mt-2 text-sm font-semibold text-ember">
-                            {formatCurrency(sub.price, sub.currency || "INR")}
+                            {formatCurrency(purchase.amount / 100, purchase.currency || "INR")}
                           </p>
                         </div>
                       </div>
                       <div className="mt-4 flex flex-wrap gap-4 text-xs text-dune/60">
-                        <span>Purchased: {formatDate(sub.created_at)}</span>
-                        <span>Renewal: {formatDate(sub.current_period_end)}</span>
+                        <span>Purchased: {formatDate(purchase.created_at)}</span>
+                        <span>Activated: {formatDate(purchase.activated_at)}</span>
+                        <span>Payment: {purchase.payment_status}</span>
                       </div>
-                      {sub.status === "active" && (
-                        <button
-                          onClick={() => handleCancel(sub.id)}
-                          disabled={cancellingId === sub.id}
-                          className="mt-4 text-xs font-semibold text-red-400 hover:text-red-300 disabled:opacity-50"
-                        >
-                          {cancellingId === sub.id ? "Cancelling..." : "Cancel subscription"}
-                        </button>
+                      {purchase.subscription_id && (
+                        <>
+                          {pendingCancelId === purchase.subscription_id ? (
+                            <div className="mt-4 flex flex-wrap items-center gap-3 text-xs">
+                              <span className="text-dune/60">Cancel this subscription?</span>
+                              <button
+                                onClick={() => handleCancel(purchase.subscription_id!)}
+                                disabled={cancellingId === purchase.subscription_id}
+                                className="font-semibold text-red-400 hover:text-red-300 disabled:opacity-50"
+                              >
+                                {cancellingId === purchase.subscription_id ? "Cancelling..." : "Yes, cancel"}
+                              </button>
+                              <button
+                                onClick={() => setPendingCancelId(null)}
+                                className="font-semibold text-dune/60 hover:text-dune"
+                              >
+                                Keep active
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setPendingCancelId(purchase.subscription_id!)}
+                              className="mt-4 text-xs font-semibold text-red-400 hover:text-red-300"
+                            >
+                              Cancel subscription
+                            </button>
+                          )}
+                        </>
                       )}
                     </div>
                   ))
                 )}
+              </div>
+
+              <div className="mt-8 border-t border-dune/10 pt-6">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.25em] text-ember">Purchase History</p>
+                    <h3 className="mt-2 font-[var(--font-space)] text-xl">Billing and payment activity</h3>
+                  </div>
+                  <span className="rounded-full border border-dune/15 px-3 py-1 text-xs uppercase tracking-widest text-dune/60">
+                    {payments.length} payments
+                  </span>
+                </div>
+
+                <div className="mt-6 space-y-4">
+                  {payments.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-dune/20 bg-midnight/20 p-8 text-sm text-dune/60">
+                      No billing records are attached to your account yet.
+                    </div>
+                  ) : (
+                    payments.map((payment) => (
+                      <div key={payment.id} className="rounded-2xl border border-dune/10 bg-midnight/30 p-5">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="text-lg font-semibold text-dune">
+                              {payment.product_name || payment.description || payment.plan_code}
+                            </p>
+                            <p className="mt-1 text-xs uppercase tracking-widest text-dune/45">
+                              {payment.product_tier || "custom"} purchase
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <span className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest ${STATUS_STYLES[payment.status] || STATUS_STYLES.halted}`}>
+                              {payment.status}
+                            </span>
+                            <p className="mt-2 text-sm font-semibold text-ember">
+                              {formatCurrency(payment.amount / 100, payment.currency || "INR")}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="mt-4 flex flex-wrap gap-4 text-xs text-dune/60">
+                          <span>Purchased: {formatDate(payment.created_at)}</span>
+                          <span>Order: {payment.razorpay_order_id || "-"}</span>
+                          <span>Access: {payment.access_status || payment.subscription_status || "pending"}</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             </div>
 
@@ -712,15 +909,31 @@ export default function DashboardPage() {
                     <span className="text-[10px] uppercase tracking-tighter text-dune/30">JSON Format</span>
                   </button>
 
-                  <button
-                    onClick={deleteAccount}
-                    className="w-full flex items-center justify-between px-4 py-3 bg-red-500/5 hover:bg-red-500/10 border border-red-500/20 rounded-xl transition-all group"
-                  >
-                    <div className="flex items-center gap-3">
-                      <Trash2 className="w-4 h-4 text-red-500/40 group-hover:text-red-500 transition-colors" />
-                      <span className="text-sm font-medium text-red-500/80 group-hover:text-red-500">Delete Account</span>
+                  {pendingDeleteAccount ? (
+                    <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4">
+                      <p className="text-sm text-dune/70">
+                        Delete your account permanently? This cannot be undone and all progress will be lost.
+                      </p>
+                      <div className="mt-3 flex gap-3 text-sm font-semibold">
+                        <button onClick={deleteAccount} className="text-red-400 hover:text-red-300">
+                          Confirm delete
+                        </button>
+                        <button onClick={() => setPendingDeleteAccount(false)} className="text-dune/60 hover:text-dune">
+                          Keep account
+                        </button>
+                      </div>
                     </div>
-                  </button>
+                  ) : (
+                    <button
+                      onClick={() => setPendingDeleteAccount(true)}
+                      className="w-full flex items-center justify-between px-4 py-3 bg-red-500/5 hover:bg-red-500/10 border border-red-500/20 rounded-xl transition-all group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Trash2 className="w-4 h-4 text-red-500/40 group-hover:text-red-500 transition-colors" />
+                        <span className="text-sm font-medium text-red-500/80 group-hover:text-red-500">Delete Account</span>
+                      </div>
+                    </button>
+                  )}
                 </div>
               </div>
 

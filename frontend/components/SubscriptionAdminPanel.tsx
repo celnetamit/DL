@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { apiFetch } from "@/lib/api";
+import Toast from "@/components/Toast";
 
 type Subscription = {
   id: string;
@@ -24,6 +25,7 @@ type Product = { id: string; name: string; tier: string; price: number };
 type Institution = { id: string; name: string; code?: string; student_limit?: number };
 type Payment = {
   id: string;
+  purchase_id?: string;
   amount: number;
   currency: string;
   status: string;
@@ -32,10 +34,39 @@ type Payment = {
   user_email?: string;
   user_name?: string;
   product_name?: string;
+  product_tier?: string;
   institution_name?: string;
   razorpay_payment_id?: string;
   razorpay_order_id?: string;
+  subscription_status?: string;
+  access_status?: string;
   created_at: string;
+};
+
+type Purchase = {
+  id: string;
+  user_id?: string;
+  institution_id?: string;
+  product_id?: string;
+  subscription_id?: string;
+  payment_id?: string;
+  plan_code: string;
+  purchase_type: string;
+  access_status: string;
+  payment_status: string;
+  amount: number;
+  currency: string;
+  activated_at?: string;
+  access_ends_at?: string;
+  razorpay_order_id?: string;
+  razorpay_payment_id?: string;
+  created_at: string;
+  user_email?: string;
+  user_name?: string;
+  product_name?: string;
+  product_tier?: string;
+  institution_name?: string;
+  subscription_status?: string;
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -58,6 +89,7 @@ const EMPTY_FORM = {
 
 export default function SubscriptionAdminPanel({ token }: { token: string | null }) {
   const [subs, setSubs] = useState<Subscription[]>([]);
+  const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -72,6 +104,9 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
   const [saving, setSaving] = useState(false);
 
   const [selectedSub, setSelectedSub] = useState<Subscription | null>(null);
+  const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [pendingCancelId, setPendingCancelId] = useState<string | null>(null);
 
   const fetchSubs = useCallback(async () => {
     if (!token) return;
@@ -104,6 +139,16 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
     }
   }, [token]);
 
+  const fetchPurchases = useCallback(async () => {
+    if (!token) return;
+    try {
+      const data = await apiFetch<Purchase[]>("/api/v1/purchases/all", {}, token);
+      setPurchases(data || []);
+    } catch {
+      // silent
+    }
+  }, [token]);
+
   const fetchProducts = useCallback(async () => {
     try {
       const data = await apiFetch<Product[]>("/api/v1/products", {});
@@ -121,7 +166,7 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
     }
   }, [token]);
 
-  useEffect(() => { fetchSubs(); fetchUsers(); fetchProducts(); fetchInstitutions(); fetchPayments(); }, [fetchSubs, fetchUsers, fetchProducts, fetchInstitutions, fetchPayments]);
+  useEffect(() => { fetchSubs(); fetchUsers(); fetchProducts(); fetchInstitutions(); fetchPayments(); fetchPurchases(); }, [fetchSubs, fetchUsers, fetchProducts, fetchInstitutions, fetchPayments, fetchPurchases]);
 
   const openCreate = () => {
     setEditingId(null);
@@ -164,24 +209,42 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
       setEditingId(null);
       fetchSubs();
       fetchPayments();
-    } catch { alert("Failed to save subscription"); }
+      fetchPurchases();
+      setToast({ message: editingId ? "Subscription updated successfully." : "Subscription created successfully.", tone: "success" });
+    } catch {
+      setToast({ message: "Failed to save subscription", tone: "error" });
+    }
     finally { setSaving(false); }
   };
 
   const handleDelete = async (id: string) => {
-    if (!token || !confirm("Permanently delete this subscription?")) return;
-    await apiFetch(`/api/v1/admin/subscriptions/${id}`, { method: "DELETE" }, token);
-    fetchSubs();
-    fetchPayments();
-    if (selectedSub?.id === id) setSelectedSub(null);
+    if (!token) return;
+    try {
+      await apiFetch(`/api/v1/admin/subscriptions/${id}`, { method: "DELETE" }, token);
+      fetchSubs();
+      fetchPayments();
+      fetchPurchases();
+      setToast({ message: "Subscription deleted successfully.", tone: "success" });
+      setPendingDeleteId(null);
+      if (selectedSub?.id === id) setSelectedSub(null);
+    } catch {
+      setToast({ message: "Failed to delete subscription", tone: "error" });
+    }
   };
 
   const handleCancel = async (sub: Subscription) => {
-    if (!token || !confirm(`Cancel subscription for ${sub.user_email || sub.user_id}?`)) return;
-    await apiFetch(`/api/v1/subscriptions/${sub.id}/cancel`, { method: "PUT" }, token);
-    fetchSubs();
-    fetchPayments();
-    setSelectedSub(null);
+    if (!token) return;
+    try {
+      await apiFetch(`/api/v1/subscriptions/${sub.id}/cancel`, { method: "PUT" }, token);
+      fetchSubs();
+      fetchPayments();
+      fetchPurchases();
+      setToast({ message: "Subscription cancelled successfully.", tone: "success" });
+      setPendingCancelId(null);
+      setSelectedSub(null);
+    } catch {
+      setToast({ message: "Failed to cancel subscription", tone: "error" });
+    }
   };
 
   const filtered = subs.filter((s) => {
@@ -204,9 +267,11 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
   const linkedProductCount = subs.filter((sub) => sub.product_id).length;
   const capturedPayments = payments.filter((payment) => payment.status === "captured");
   const capturedRevenue = capturedPayments.reduce((sum, payment) => sum + payment.amount, 0) / 100;
+  const activePurchases = purchases.filter((purchase) => purchase.access_status === "active").length;
 
   return (
     <div className="space-y-6 min-w-0">
+      {toast && <Toast message={toast.message} tone={toast.tone} onClose={() => setToast(null)} />}
       <section className="grid gap-4 md:grid-cols-3">
         <div className="glass rounded-2xl p-6 border border-dune/10">
           <p className="text-[10px] uppercase tracking-widest text-dune/55">Active Subscriptions</p>
@@ -219,6 +284,11 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
         <div className="glass rounded-2xl p-6 border border-dune/10">
           <p className="text-[10px] uppercase tracking-widest text-dune/55">Linked Products</p>
           <p className="mt-4 text-4xl font-[var(--font-space)] text-ember">{linkedProductCount}</p>
+        </div>
+        <div className="glass rounded-2xl p-6 border border-dune/10 md:col-span-3">
+          <p className="text-[10px] uppercase tracking-widest text-dune/55">Active Purchases</p>
+          <p className="mt-4 text-4xl font-[var(--font-space)] text-ember">{activePurchases}</p>
+          <p className="mt-2 text-sm text-dune/55">{purchases.length} purchase records tracked end-to-end</p>
         </div>
         <div className="glass rounded-2xl p-6 border border-dune/10 md:col-span-3">
           <p className="text-[10px] uppercase tracking-widest text-dune/55">Captured Billing</p>
@@ -515,19 +585,59 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
                 Edit Subscription
               </button>
               {selectedSub.status === "active" && (
+                pendingCancelId === selectedSub.id ? (
+                  <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
+                    <p className="text-xs text-dune/70">Cancel this subscription for {selectedSub.user_email || selectedSub.user_id}?</p>
+                    <div className="mt-3 flex gap-3 text-xs font-semibold">
+                      <button
+                        onClick={() => handleCancel(selectedSub)}
+                        className="text-amber-400 hover:text-amber-300"
+                      >
+                        Confirm cancel
+                      </button>
+                      <button
+                        onClick={() => setPendingCancelId(null)}
+                        className="text-dune/60 hover:text-dune"
+                      >
+                        Keep active
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setPendingCancelId(selectedSub.id)}
+                    className="w-full rounded-xl border border-amber-500/30 text-amber-400 py-2 text-xs font-semibold hover:bg-amber-500/10"
+                  >
+                    Cancel Subscription
+                  </button>
+                )
+              )}
+              {pendingDeleteId === selectedSub.id ? (
+                <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3">
+                  <p className="text-xs text-dune/70">Delete this subscription record permanently?</p>
+                  <div className="mt-3 flex gap-3 text-xs font-semibold">
+                    <button
+                      onClick={() => handleDelete(selectedSub.id)}
+                      className="text-red-400 hover:text-red-300"
+                    >
+                      Confirm delete
+                    </button>
+                    <button
+                      onClick={() => setPendingDeleteId(null)}
+                      className="text-dune/60 hover:text-dune"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
                 <button
-                  onClick={() => handleCancel(selectedSub)}
-                  className="w-full rounded-xl border border-amber-500/30 text-amber-400 py-2 text-xs font-semibold hover:bg-amber-500/10"
+                  onClick={() => setPendingDeleteId(selectedSub.id)}
+                  className="w-full rounded-xl border border-red-500/30 text-red-400 py-2 text-xs font-semibold hover:bg-red-500/10"
                 >
-                  ⏸ Cancel Subscription
+                  Delete Record
                 </button>
               )}
-              <button
-                onClick={() => handleDelete(selectedSub.id)}
-                className="w-full rounded-xl border border-red-500/30 text-red-400 py-2 text-xs font-semibold hover:bg-red-500/10"
-              >
-                Delete Record
-              </button>
             </div>
           </div>
         )}
@@ -544,6 +654,54 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
       </div>
 
       <div className="glass rounded-2xl p-6 min-w-0">
+        <div className="flex items-center justify-between gap-3 mb-5">
+          <div>
+            <h3 className="font-[var(--font-space)] text-xl">Purchases & Licenses</h3>
+            <p className="text-xs text-dune/50 mt-0.5">Durable purchase records with linked payment and access state.</p>
+          </div>
+          <span className="text-xs text-dune/50">{purchases.length} purchases</span>
+        </div>
+
+        {purchases.length === 0 ? (
+          <p className="text-sm text-dune/50 py-6">No purchase records found yet.</p>
+        ) : (
+          <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1 mb-8">
+            {purchases.map((purchase) => (
+              <div key={purchase.id} className="rounded-xl border border-dune/15 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm truncate">
+                      {purchase.product_name || purchase.plan_code || "Purchase"}
+                    </p>
+                    <p className="text-[10px] uppercase tracking-widest text-dune/40 mt-1">
+                      {purchase.product_tier || "custom"} {purchase.purchase_type}
+                    </p>
+                    <p className="text-xs text-dune/50 truncate mt-1">
+                      {purchase.user_name || purchase.user_email || "Unknown user"}
+                      {purchase.institution_name ? ` - ${purchase.institution_name}` : ""}
+                    </p>
+                    <p className="text-[10px] font-mono text-dune/35 mt-1">
+                      Purchase: {purchase.id}
+                    </p>
+                    <p className="text-[10px] text-dune/35 mt-1">
+                      Payment: {purchase.payment_status} · Subscription: {purchase.subscription_status || "not linked"}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className={`inline-block text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-widest border ${STATUS_COLORS[purchase.access_status] || STATUS_COLORS.halted}`}>
+                      {purchase.access_status}
+                    </span>
+                    <p className="mt-2 font-semibold text-ember">
+                      Rs. {(purchase.amount / 100).toFixed(0)}
+                    </p>
+                    <p className="text-[10px] text-dune/35 mt-1">{new Date(purchase.created_at).toLocaleDateString()}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="flex items-center justify-between gap-3 mb-5">
           <div>
             <h3 className="font-[var(--font-space)] text-xl">Payments & Purchases</h3>
@@ -563,6 +721,11 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
                     <p className="font-semibold text-sm truncate">
                       {payment.product_name || payment.description || payment.plan_code || "Purchase"}
                     </p>
+                    {payment.product_tier && (
+                      <p className="text-[10px] uppercase tracking-widest text-dune/40 mt-1">
+                        {payment.product_tier} entitlement
+                      </p>
+                    )}
                     <p className="text-xs text-dune/50 truncate mt-1">
                       {payment.user_name || payment.user_email || "Unknown user"}
                       {payment.institution_name ? ` - ${payment.institution_name}` : ""}
@@ -575,6 +738,9 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
                         Payment: {payment.razorpay_payment_id}
                       </p>
                     )}
+                    <p className="text-[10px] text-dune/35 mt-1">
+                      Access: {payment.access_status || payment.subscription_status || "pending linkage"}
+                    </p>
                   </div>
                   <div className="text-right shrink-0">
                     <span className={`inline-block text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-widest border ${STATUS_COLORS[payment.status] || STATUS_COLORS.halted}`}>

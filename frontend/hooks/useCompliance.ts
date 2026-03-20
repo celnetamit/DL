@@ -5,6 +5,8 @@ import { apiFetch } from "@/lib/api";
 
 export function useCompliance() {
   const [consentGiven, setConsentGiven] = useState<boolean | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [messageTone, setMessageTone] = useState<"success" | "error">("success");
 
   useEffect(() => {
     const consent = localStorage.getItem("dpdp_consent");
@@ -33,21 +35,22 @@ export function useCompliance() {
       a.href = url;
       a.download = `my-data-${new Date().toISOString().split('T')[0]}.json`;
       a.click();
+      setMessage("Your data export has been prepared and downloaded.");
+      setMessageTone("success");
     } catch (error) {
-      alert("Failed to export data. Please try again later.");
+      setMessage("Failed to export data. Please try again later.");
+      setMessageTone("error");
     }
   };
 
   const deleteAccount = async () => {
-    if (!confirm("Are you sure you want to permanently delete your account? This action cannot be undone and all your progress will be lost.")) {
-      return;
-    }
     try {
       await apiFetch("/compliance/account", { method: "DELETE" });
       localStorage.removeItem("token");
       window.location.href = "/";
     } catch (error) {
-      alert("Failed to delete account. Please contact support.");
+      setMessage("Failed to delete account. Please contact support.");
+      setMessageTone("error");
     }
   };
 
@@ -56,5 +59,8 @@ export function useCompliance() {
     acceptConsent,
     exportData,
     deleteAccount,
+    message,
+    messageTone,
+    clearMessage: () => setMessage(null),
   };
 }

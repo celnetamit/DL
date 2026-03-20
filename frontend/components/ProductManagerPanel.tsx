@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api";
+import Toast from "@/components/Toast";
 
 const ALL_CONTENT_TYPES = [
   { value: "articles", label: "Articles" },
@@ -52,6 +53,8 @@ export default function ProductManagerPanel() {
   });
 
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   const fetchData = async () => {
     if (!token) return;
@@ -93,19 +96,23 @@ export default function ProductManagerPanel() {
       setForm({ tier: "domain", currency: "INR", price: 0, status: "active", content_types: [], bundle_domain_ids: [] });
       setEditingId(null);
       fetchData();
+      setToast({ message: editingId ? "Product updated successfully." : "Product created successfully.", tone: "success" });
     } catch (err) {
       console.error(err);
-      alert("Failed to save product");
+      setToast({ message: "Failed to save product", tone: "error" });
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!token || !confirm("Delete product forever?")) return;
+    if (!token) return;
     try {
       await apiFetch(`/api/v1/products/${id}`, { method: "DELETE" }, token);
       fetchData();
+      setPendingDeleteId(null);
+      setToast({ message: "Product deleted successfully.", tone: "success" });
     } catch (err) {
       console.error(err);
+      setToast({ message: "Failed to delete product", tone: "error" });
     }
   };
 
@@ -131,6 +138,7 @@ export default function ProductManagerPanel() {
 
   return (
     <div className="grid lg:grid-cols-[1fr_340px] gap-6 items-start min-w-0">
+      {toast && <Toast message={toast.message} tone={toast.tone} onClose={() => setToast(null)} />}
       {/* ── Product List ── */}
       <div className="glass rounded-2xl p-6 min-w-0">
         <div className="flex justify-between items-center mb-4">
@@ -180,12 +188,29 @@ export default function ProductManagerPanel() {
                 >
                   Edit
                 </button>
-                <button
-                  onClick={() => handleDelete(prod.id)}
-                  className="rounded-full border border-ember/40 text-ember px-3 py-1 text-xs hover:bg-ember/10"
-                >
-                  Delete
-                </button>
+                {pendingDeleteId === prod.id ? (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleDelete(prod.id)}
+                      className="rounded-full border border-ember/40 text-ember px-3 py-1 text-xs hover:bg-ember/10"
+                    >
+                      Confirm delete
+                    </button>
+                    <button
+                      onClick={() => setPendingDeleteId(null)}
+                      className="rounded-full border border-dune/20 px-3 py-1 text-xs hover:bg-dune/10"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setPendingDeleteId(prod.id)}
+                    className="rounded-full border border-ember/40 text-ember px-3 py-1 text-xs hover:bg-ember/10"
+                  >
+                    Delete
+                  </button>
+                )}
               </div>
             </div>
           ))}

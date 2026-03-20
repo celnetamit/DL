@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { apiFetch } from "@/lib/api";
+import Toast from "@/components/Toast";
 
 type Subdomain = { id: string; name: string };
 type Domain = { id: string; name: string; subdomains: Subdomain[] };
@@ -14,6 +15,9 @@ export default function DomainManagementPanel() {
   const [newDomainName, setNewDomainName] = useState("");
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
   const [newSubdomainName, setNewSubdomainName] = useState("");
+  const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
+  const [pendingDomainDeleteId, setPendingDomainDeleteId] = useState<string | null>(null);
+  const [pendingSubdomainDeleteId, setPendingSubdomainDeleteId] = useState<string | null>(null);
 
   const fetchDomains = async () => {
     if (!token) return;
@@ -38,9 +42,10 @@ export default function DomainManagementPanel() {
       await apiFetch("/api/v1/domains", { method: "POST", body: JSON.stringify({ name: newDomainName }) }, token);
       setNewDomainName("");
       fetchDomains();
+      setToast({ message: "Domain created successfully.", tone: "success" });
     } catch (err) {
       console.error(err);
-      alert("Failed to create domain");
+      setToast({ message: "Failed to create domain", tone: "error" });
     }
   };
 
@@ -51,29 +56,36 @@ export default function DomainManagementPanel() {
       await apiFetch(`/api/v1/domains/${domainId}/subdomains`, { method: "POST", body: JSON.stringify({ name: newSubdomainName }) }, token);
       setNewSubdomainName("");
       fetchDomains();
+      setToast({ message: "Subdomain created successfully.", tone: "success" });
     } catch (err) {
       console.error(err);
-      alert("Failed to create subdomain");
+      setToast({ message: "Failed to create subdomain", tone: "error" });
     }
   };
 
   const handleDeleteDomain = async (id: string) => {
-    if (!token || !confirm("Delete domain?")) return;
+    if (!token) return;
     try {
       await apiFetch(`/api/v1/domains/${id}`, { method: "DELETE" }, token);
       fetchDomains();
+      setPendingDomainDeleteId(null);
+      setToast({ message: "Domain deleted successfully.", tone: "success" });
     } catch (err) {
       console.error(err);
+      setToast({ message: "Failed to delete domain", tone: "error" });
     }
   };
 
   const handleDeleteSubdomain = async (subId: string) => {
-    if (!token || !confirm("Delete subdomain?")) return;
+    if (!token) return;
     try {
       await apiFetch(`/api/v1/subdomains/${subId}`, { method: "DELETE" }, token);
       fetchDomains();
+      setPendingSubdomainDeleteId(null);
+      setToast({ message: "Subdomain deleted successfully.", tone: "success" });
     } catch (err) {
       console.error(err);
+      setToast({ message: "Failed to delete subdomain", tone: "error" });
     }
   };
 
@@ -81,6 +93,7 @@ export default function DomainManagementPanel() {
 
   return (
     <div className="space-y-6">
+      {toast && <Toast message={toast.message} tone={toast.tone} onClose={() => setToast(null)} />}
       <div className="glass rounded-2xl p-6">
         <h3 className="text-lg font-[var(--font-space)] mb-4">Add Domain</h3>
         <form onSubmit={handleCreateDomain} className="flex gap-4 items-end">
@@ -113,12 +126,29 @@ export default function DomainManagementPanel() {
                   >
                     {selectedDomain === dom.id ? "Hide Subdomains" : "Manage Subdomains"}
                   </button>
-                  <button
-                    onClick={() => handleDeleteDomain(dom.id)}
-                    className="rounded-full border border-ember/40 px-3 py-1 text-xs text-ember hover:bg-ember/10"
-                  >
-                    Delete
-                  </button>
+                  {pendingDomainDeleteId === dom.id ? (
+                    <div className="flex items-center gap-2 text-xs">
+                      <button
+                        onClick={() => handleDeleteDomain(dom.id)}
+                        className="rounded-full border border-ember/40 px-3 py-1 text-ember hover:bg-ember/10"
+                      >
+                        Confirm delete
+                      </button>
+                      <button
+                        onClick={() => setPendingDomainDeleteId(null)}
+                        className="rounded-full border border-dune/20 px-3 py-1 text-dune/60 hover:bg-dune/10"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setPendingDomainDeleteId(dom.id)}
+                      className="rounded-full border border-ember/40 px-3 py-1 text-xs text-ember hover:bg-ember/10"
+                    >
+                      Delete
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -128,9 +158,20 @@ export default function DomainManagementPanel() {
                     {dom.subdomains?.map(sub => (
                       <div key={sub.id} className="flex items-center justify-between rounded bg-midnight/50 px-3 py-2 text-sm">
                         <span>{sub.name}</span>
-                        <button onClick={() => handleDeleteSubdomain(sub.id)} className="text-ember opacity-60 hover:opacity-100 text-xs">
-                          ✕
-                        </button>
+                        {pendingSubdomainDeleteId === sub.id ? (
+                          <div className="flex gap-2 text-[10px]">
+                            <button onClick={() => handleDeleteSubdomain(sub.id)} className="text-ember hover:opacity-100">
+                              Confirm
+                            </button>
+                            <button onClick={() => setPendingSubdomainDeleteId(null)} className="text-dune/50 hover:text-dune/80">
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <button onClick={() => setPendingSubdomainDeleteId(sub.id)} className="text-ember opacity-60 hover:opacity-100 text-xs">
+                            ✕
+                          </button>
+                        )}
                       </div>
                     ))}
                     {(!dom.subdomains || dom.subdomains.length === 0) && (
