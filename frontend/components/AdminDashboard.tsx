@@ -176,6 +176,20 @@ export default function AdminDashboard() {
       product_name: string;
       purchase_count: number;
     }>,
+    system_status: {
+      database: {
+        status: "up",
+        open_connections: 0,
+        in_use: 0,
+        idle: 0,
+      },
+      ai: {
+        failed_generations_last_24h: 0,
+      },
+      audit: {
+        events_last_24h: 0,
+      },
+    },
   });
   const [globalDomains, setGlobalDomains] = useState<any[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -522,6 +536,50 @@ export default function AdminDashboard() {
         <div className="glass rounded-2xl p-6 border border-dune/20">
           <p className="text-[10px] font-bold uppercase tracking-widest text-dune/60">Total Revenue</p>
           <p className="mt-4 font-[var(--font-space)] text-4xl font-semibold text-ember">₹{analytics.total_revenue}</p>
+        </div>
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-[1fr_1fr_1fr] mb-8 min-w-0 w-full">
+        <div className="glass rounded-2xl p-6 border border-dune/20">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-dune/60">Database Status</p>
+          <div className="mt-4 flex items-center gap-3">
+            <span
+              className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-widest ${
+                analytics.system_status.database.status === "up" ? "bg-moss/20 text-moss" : "bg-ember/20 text-ember"
+              }`}
+            >
+              {analytics.system_status.database.status}
+            </span>
+            <span className="text-sm text-dune/65">
+              {analytics.system_status.database.open_connections} open
+            </span>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-3 text-sm text-dune/70">
+            <div className="rounded-xl bg-midnight/25 p-3">
+              <p className="text-[10px] uppercase tracking-widest text-dune/45">In Use</p>
+              <p className="mt-2 text-xl font-[var(--font-space)] text-dune">{analytics.system_status.database.in_use}</p>
+            </div>
+            <div className="rounded-xl bg-midnight/25 p-3">
+              <p className="text-[10px] uppercase tracking-widest text-dune/45">Idle</p>
+              <p className="mt-2 text-xl font-[var(--font-space)] text-dune">{analytics.system_status.database.idle}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="glass rounded-2xl p-6 border border-dune/20">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-dune/60">AI Reliability</p>
+          <p className="mt-4 text-4xl font-[var(--font-space)] font-semibold text-ember">
+            {analytics.system_status.ai.failed_generations_last_24h}
+          </p>
+          <p className="mt-2 text-sm text-dune/60">Failed AI generations in the last 24 hours</p>
+        </div>
+
+        <div className="glass rounded-2xl p-6 border border-dune/20">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-dune/60">Audit Activity</p>
+          <p className="mt-4 text-4xl font-[var(--font-space)] font-semibold text-ember">
+            {analytics.system_status.audit.events_last_24h}
+          </p>
+          <p className="mt-2 text-sm text-dune/60">Audit events recorded in the last 24 hours</p>
         </div>
       </section>
 

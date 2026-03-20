@@ -46,6 +46,38 @@ func (h *Handler) GetAdminAnalytics(c *gin.Context) {
 		return
 	}
 
+	failedAIGenerationsLast24h := int64(0)
+	if err := h.DB.Model(&models.AIGenerationLog{}).
+		Where("status = ? AND created_at >= ?", "failed", time.Now().UTC().Add(-24*time.Hour)).
+		Count(&failedAIGenerationsLast24h).Error; err != nil {
+		utils.JSON(c, http.StatusInternalServerError, "failed to load ai failure metrics", nil)
+		return
+	}
+
+	recentAuditEventsLast24h := int64(0)
+	if err := h.DB.Model(&models.AuditLog{}).
+		Where("created_at >= ?", time.Now().UTC().Add(-24*time.Hour)).
+		Count(&recentAuditEventsLast24h).Error; err != nil {
+		utils.JSON(c, http.StatusInternalServerError, "failed to load audit metrics", nil)
+		return
+	}
+
+	dbStatus := "up"
+	openConnections := 0
+	inUseConnections := 0
+	idleConnections := 0
+	if sqlDB, err := h.DB.DB(); err == nil {
+		if pingErr := sqlDB.Ping(); pingErr != nil {
+			dbStatus = "down"
+		}
+		stats := sqlDB.Stats()
+		openConnections = stats.OpenConnections
+		inUseConnections = stats.InUse
+		idleConnections = stats.Idle
+	} else {
+		dbStatus = "down"
+	}
+
 	startMonth := time.Now().UTC().AddDate(0, -(months - 1), 0)
 	startMonth = time.Date(startMonth.Year(), startMonth.Month(), 1, 0, 0, 0, 0, time.UTC)
 
@@ -186,5 +218,19 @@ func (h *Handler) GetAdminAnalytics(c *gin.Context) {
 		"purchase_access_breakdown": accessStatusBreakdown,
 		"purchase_payment_breakdown": paymentStatusBreakdown,
 		"top_products":         topProducts,
+		"system_status": gin.H{
+			"database": gin.H{
+				"status":           dbStatus,
+				"open_connections": openConnections,
+				"in_use":           inUseConnections,
+				"idle":             idleConnections,
+			},
+			"ai": gin.H{
+				"failed_generations_last_24h": failedAIGenerationsLast24h,
+			},
+			"audit": gin.H{
+				"events_last_24h": recentAuditEventsLast24h,
+			},
+		},
 	})
 }

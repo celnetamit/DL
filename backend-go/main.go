@@ -128,6 +128,8 @@ func main() {
 	if err := router.SetTrustedProxies(cfg.TrustedProxies); err != nil {
 		log.Fatalf("failed to configure trusted proxies: %v", err)
 	}
+	router.Use(middleware.RequestID())
+	router.Use(middleware.AccessLog())
 	router.Use(middleware.SecurityHeaders())
 	router.Use(corsMiddleware(cfg.AppBaseURL))
 
