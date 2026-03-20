@@ -1,24 +1,32 @@
 "use client";
 
 import { useState } from "react";
+import { submitContactLead } from "@/lib/api";
 
 export default function ContactClient() {
   const [formData, setFormData] = useState({
-    name: "",
+    full_name: "",
     email: "",
+    phone: "",
+    institution_name: "",
     subject: "",
     message: "",
   });
   const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
+  const [errorMessage, setErrorMessage] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setStatus("submitting");
-    // Simulate API call
-    setTimeout(() => {
+    setErrorMessage("");
+    try {
+      await submitContactLead(formData);
       setStatus("success");
-      setFormData({ name: "", email: "", subject: "", message: "" });
-    }, 1500);
+      setFormData({ full_name: "", email: "", phone: "", institution_name: "", subject: "", message: "" });
+    } catch (error: any) {
+      setStatus("error");
+      setErrorMessage(error?.message || "We could not submit your message right now.");
+    }
   };
 
   return (
@@ -50,8 +58,8 @@ export default function ContactClient() {
                 id="name"
                 required
                 type="text"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                value={formData.full_name}
+                onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
                 className="w-full bg-midnight/50 border border-dune/10 rounded-2xl p-4 text-dune focus:border-ember focus:ring-1 focus:ring-ember outline-none transition-all"
                 placeholder="John Doe"
               />
@@ -66,6 +74,30 @@ export default function ContactClient() {
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 className="w-full bg-midnight/50 border border-dune/10 rounded-2xl p-4 text-dune focus:border-ember focus:ring-1 focus:ring-ember outline-none transition-all"
                 placeholder="john@example.com"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label htmlFor="phone" className="text-xs uppercase tracking-widest text-dune/40 font-bold ml-1">Phone</label>
+              <input
+                id="phone"
+                type="tel"
+                value={formData.phone}
+                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                className="w-full bg-midnight/50 border border-dune/10 rounded-2xl p-4 text-dune focus:border-ember focus:ring-1 focus:ring-ember outline-none transition-all"
+                placeholder="+91 98765 43210"
+              />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="institution_name" className="text-xs uppercase tracking-widest text-dune/40 font-bold ml-1">Institution</label>
+              <input
+                id="institution_name"
+                type="text"
+                value={formData.institution_name}
+                onChange={(e) => setFormData({ ...formData, institution_name: e.target.value })}
+                className="w-full bg-midnight/50 border border-dune/10 rounded-2xl p-4 text-dune focus:border-ember focus:ring-1 focus:ring-ember outline-none transition-all"
+                placeholder="Your institution or company"
               />
             </div>
           </div>
@@ -93,6 +125,11 @@ export default function ContactClient() {
               placeholder="How can we help you?"
             />
           </div>
+          {status === "error" && (
+            <p className="rounded-2xl border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+              {errorMessage}
+            </p>
+          )}
           <button
             disabled={status === "submitting"}
             className="w-full bg-ember hover:bg-ember/90 text-midnight font-bold py-5 rounded-2xl transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed text-lg shadow-[0_10px_30px_rgba(255,107,0,0.3)]"

@@ -46,6 +46,8 @@ TRUSTED_PROXIES=127.0.0.1,::1
 RAZORPAY_KEY_ID=rzp_live_yourkeyhere
 RAZORPAY_KEY_SECRET=your_rzp_live_secret
 RAZORPAY_WEBHOOK_SECRET=your_rzp_webhook_secret
+LEAD_WEBHOOK_URL=https://your-crm.example.com/webhooks/leads
+LEAD_WEBHOOK_SECRET=your_crm_webhook_secret
 
 # AI
 GEMINI_API_KEY=your-gemini-api-key

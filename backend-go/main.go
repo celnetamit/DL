@@ -112,6 +112,10 @@ func main() {
 			KeyID:     cfg.RazorpayKeyID,
 			KeySecret: cfg.RazorpayKeySecret,
 		},
+		LeadWebhook: services.LeadWebhookService{
+			URL:    cfg.CRMWebhookURL,
+			Secret: cfg.CRMWebhookSecret,
+		},
 		GoogleOAuth: &oauth2.Config{
 			ClientID:     cfg.GoogleClientID,
 			ClientSecret: cfg.GoogleClientSecret,
@@ -139,6 +143,8 @@ func main() {
 	{
 		api.POST("/auth/register", middleware.RateLimit(5, 10*time.Minute), handler.Register)
 		api.POST("/auth/login", middleware.RateLimit(5, 5*time.Minute), handler.Login)
+		api.POST("/leads/contact", middleware.RateLimit(10, 10*time.Minute), handler.SubmitContactLead)
+		api.POST("/leads/purchase-request", middleware.RateLimit(10, 10*time.Minute), handler.SubmitPurchaseLead)
 		api.GET("/auth/google", handler.GoogleLogin)
 		api.GET("/auth/google/callback", handler.GoogleCallback)
 		api.POST("/subscriptions/webhook", handler.RazorpayWebhook)

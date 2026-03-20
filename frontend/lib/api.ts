@@ -87,6 +87,45 @@ export async function loginUser(payload: { email: string; password: string }) {
   );
 }
 
+export async function submitContactLead(payload: {
+  full_name: string;
+  email: string;
+  phone?: string;
+  institution_name?: string;
+  subject: string;
+  message: string;
+}) {
+  return apiFetch<{ lead_id: string; sync_status: string }>(
+    "/api/v1/leads/contact",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export async function submitPurchaseLead(payload: {
+  full_name: string;
+  email: string;
+  phone?: string;
+  institution_name?: string;
+  subject?: string;
+  message?: string;
+  product_id?: string;
+  product_name?: string;
+  plan_code?: string;
+  amount?: number;
+  currency?: string;
+}) {
+  return apiFetch<{ lead_id: string; sync_status: string }>(
+    "/api/v1/leads/purchase-request",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
 export async function createCourse(
   payload: { title: string; description?: string; level?: string; domain?: string; subdomain?: string },
   token: string,

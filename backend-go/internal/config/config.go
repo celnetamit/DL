@@ -13,6 +13,8 @@ type Config struct {
 	RazorpayKeyID         string
 	RazorpayKeySecret     string
 	RazorpayWebhookSecret string
+	CRMWebhookURL         string
+	CRMWebhookSecret      string
 	AppBaseURL            string
 	AIEngineURL           string
 	GoogleClientID        string
@@ -30,6 +32,8 @@ func Load() Config {
 		RazorpayKeyID:         getEnv("RAZORPAY_KEY_ID", ""),
 		RazorpayKeySecret:     getEnv("RAZORPAY_KEY_SECRET", ""),
 		RazorpayWebhookSecret: getEnv("RAZORPAY_WEBHOOK_SECRET", ""),
+		CRMWebhookURL:         firstEnv("LEAD_WEBHOOK_URL", "CRM_WEBHOOK_URL"),
+		CRMWebhookSecret:      firstEnv("LEAD_WEBHOOK_SECRET", "CRM_WEBHOOK_SECRET"),
 		AppBaseURL:            getEnv("APP_BASE_URL", "http://localhost:3000"),
 		AIEngineURL:           getEnv("AI_ENGINE_URL", "http://localhost:8000"),
 		GoogleClientID:        getEnv("GOOGLE_CLIENT_ID", ""),
@@ -60,6 +64,9 @@ func (c Config) Validate() error {
 	if (c.GoogleClientID == "") != (c.GoogleClientSecret == "") {
 		return fmt.Errorf("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must both be set together")
 	}
+	if c.CRMWebhookSecret != "" && c.CRMWebhookURL == "" {
+		return fmt.Errorf("CRM_WEBHOOK_URL is required when CRM_WEBHOOK_SECRET is set")
+	}
 	if (c.GoogleClientID != "" || c.GoogleClientSecret != "") && c.GoogleRedirectURL == "" {
 		return fmt.Errorf("GOOGLE_REDIRECT_URL is required when Google OAuth is enabled")
 	}
@@ -74,6 +81,9 @@ func (c Config) Validate() error {
 		if c.GoogleRedirectURL != "" && !strings.HasPrefix(c.GoogleRedirectURL, "https://") {
 			return fmt.Errorf("GOOGLE_REDIRECT_URL must use https in production")
 		}
+		if c.CRMWebhookURL != "" && !strings.HasPrefix(c.CRMWebhookURL, "https://") {
+			return fmt.Errorf("CRM_WEBHOOK_URL must use https in production")
+		}
 	}
 
 	return nil
@@ -84,6 +94,15 @@ func getEnv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func firstEnv(keys ...string) string {
+	for _, key := range keys {
+		if value := os.Getenv(key); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func splitCSV(value string) []string {

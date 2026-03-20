@@ -71,6 +71,7 @@ GitHub Actions now runs these suites automatically on pushes to `main` and on pu
 ## Notes
 
 - Razorpay webhooks are verified using `RAZORPAY_WEBHOOK_SECRET`.
+- Contact-form and purchase-request submissions can be pushed into your CRM/ERP lead section via `LEAD_WEBHOOK_URL` and optional `LEAD_WEBHOOK_SECRET`.
 - The AI engine uses the Gemini API via `GEMINI_API_KEY` and can be called directly by the frontend or routed through the backend.
 - All sensitive credentials are kept in `.env` files.
 - For production, set `APP_ENV=production`, `GIN_MODE=release`, a strong `JWT_SECRET`, explicit `APP_BASE_URL`, `NEXT_PUBLIC_API_URL`, and `TRUSTED_PROXIES`.

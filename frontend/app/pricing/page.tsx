@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 import { useState, useEffect } from "react";
 import Script from "next/script";
 import { useAuth } from "@/lib/auth";
-import { createOrder, apiFetch, verifyOrderPayment } from "@/lib/api";
+import { createOrder, apiFetch, submitPurchaseLead, verifyOrderPayment } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import Toast from "@/components/Toast";
 
@@ -24,8 +24,25 @@ export default function PricingPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [fetchingProducts, setFetchingProducts] = useState(true);
   const [processingPlan, setProcessingPlan] = useState<string | null>(null);
+  const [requestingLead, setRequestingLead] = useState(false);
   const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
+  const [purchaseRequest, setPurchaseRequest] = useState({
+    full_name: "",
+    email: "",
+    phone: "",
+    institution_name: "",
+    product_id: "",
+    message: "",
+  });
   const router = useRouter();
+
+  useEffect(() => {
+    setPurchaseRequest((prev) => ({
+      ...prev,
+      full_name: user?.full_name || prev.full_name,
+      email: user?.email || prev.email,
+    }));
+  }, [user?.email, user?.full_name]);
 
   useEffect(() => {
     const loadCatalog = async () => {
@@ -116,6 +133,39 @@ export default function PricingPage() {
     }
   };
 
+  const handlePurchaseRequest = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setRequestingLead(true);
+    try {
+      const product = products.find((item) => item.id === purchaseRequest.product_id);
+      await submitPurchaseLead({
+        full_name: purchaseRequest.full_name,
+        email: purchaseRequest.email,
+        phone: purchaseRequest.phone,
+        institution_name: purchaseRequest.institution_name,
+        product_id: purchaseRequest.product_id || undefined,
+        product_name: product?.name,
+        plan_code: product?.id,
+        amount: product ? Math.round(product.price * 100) : undefined,
+        currency: product?.tier ? "INR" : undefined,
+        subject: product ? `Purchase request for ${product.name}` : "Purchase request",
+        message: purchaseRequest.message,
+      });
+      setToast({ message: "Your request has been recorded and sent to our CRM team.", tone: "success" });
+      setPurchaseRequest((prev) => ({
+        ...prev,
+        phone: "",
+        institution_name: "",
+        product_id: "",
+        message: "",
+      }));
+    } catch (error: any) {
+      setToast({ message: error?.message || "We could not submit your purchase request right now.", tone: "error" });
+    } finally {
+      setRequestingLead(false);
+    }
+  };
+
   if (loading || fetchingProducts) return <p className="p-6 text-center text-dune/60">Loading Catalog...</p>;
 
   // Group products by Tier explicitly for UX hierarchy
@@ -195,6 +245,80 @@ export default function PricingPage() {
                 <RenderGrid items={singles} />
               </>
             )}
+
+            <section className="mt-20 rounded-[2rem] border border-dune/15 bg-dune/5 p-8 md:p-10">
+              <div className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr]">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.3em] text-ember">Institutional Buying</p>
+                  <h2 className="mt-3 font-[var(--font-space)] text-3xl text-dune">Need an invoice, quote, or team purchase workflow?</h2>
+                  <p className="mt-4 max-w-2xl text-sm leading-7 text-dune/65">
+                    Submit your purchase request here. We will create a lead in our CRM/ERP, review the product mix you need,
+                    and come back with the right commercial and access setup for your institution.
+                  </p>
+                </div>
+
+                <form onSubmit={handlePurchaseRequest} className="space-y-4 rounded-[1.75rem] border border-dune/10 bg-midnight/30 p-6">
+                  <input
+                    required
+                    type="text"
+                    value={purchaseRequest.full_name}
+                    onChange={(e) => setPurchaseRequest((prev) => ({ ...prev, full_name: e.target.value }))}
+                    placeholder="Full name"
+                    className="w-full rounded-2xl border border-dune/10 bg-midnight/50 px-4 py-3 text-dune outline-none transition focus:border-ember"
+                  />
+                  <input
+                    required
+                    type="email"
+                    value={purchaseRequest.email}
+                    onChange={(e) => setPurchaseRequest((prev) => ({ ...prev, email: e.target.value }))}
+                    placeholder="Work email"
+                    className="w-full rounded-2xl border border-dune/10 bg-midnight/50 px-4 py-3 text-dune outline-none transition focus:border-ember"
+                  />
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <input
+                      type="tel"
+                      value={purchaseRequest.phone}
+                      onChange={(e) => setPurchaseRequest((prev) => ({ ...prev, phone: e.target.value }))}
+                      placeholder="Phone number"
+                      className="w-full rounded-2xl border border-dune/10 bg-midnight/50 px-4 py-3 text-dune outline-none transition focus:border-ember"
+                    />
+                    <input
+                      type="text"
+                      value={purchaseRequest.institution_name}
+                      onChange={(e) => setPurchaseRequest((prev) => ({ ...prev, institution_name: e.target.value }))}
+                      placeholder="Institution name"
+                      className="w-full rounded-2xl border border-dune/10 bg-midnight/50 px-4 py-3 text-dune outline-none transition focus:border-ember"
+                    />
+                  </div>
+                  <select
+                    value={purchaseRequest.product_id}
+                    onChange={(e) => setPurchaseRequest((prev) => ({ ...prev, product_id: e.target.value }))}
+                    className="w-full rounded-2xl border border-dune/10 bg-midnight/50 px-4 py-3 text-dune outline-none transition focus:border-ember"
+                  >
+                    <option value="">Select a product of interest</option>
+                    {products.map((product) => (
+                      <option key={product.id} value={product.id}>
+                        {product.name} ({product.tier})
+                      </option>
+                    ))}
+                  </select>
+                  <textarea
+                    rows={4}
+                    value={purchaseRequest.message}
+                    onChange={(e) => setPurchaseRequest((prev) => ({ ...prev, message: e.target.value }))}
+                    placeholder="Tell us what you want to purchase, seat count, billing needs, or timeline."
+                    className="w-full rounded-2xl border border-dune/10 bg-midnight/50 px-4 py-3 text-dune outline-none transition focus:border-ember"
+                  />
+                  <button
+                    type="submit"
+                    disabled={requestingLead}
+                    className="w-full rounded-full bg-ember px-4 py-3 text-sm font-bold text-midnight transition hover:bg-ember/90 disabled:opacity-60"
+                  >
+                    {requestingLead ? "Submitting request..." : "Submit Purchase Request"}
+                  </button>
+                </form>
+              </div>
+            </section>
           </>
         )}
       </div>
