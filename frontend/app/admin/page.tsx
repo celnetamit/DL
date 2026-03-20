@@ -11,6 +11,7 @@ import ProductManagerPanel from "@/components/ProductManagerPanel";
 import SettingsPanel from "@/components/SettingsPanel";
 import AIGenerationPanel from "@/components/AIGenerationPanel";
 import LeadEventsPanel from "@/components/LeadEventsPanel";
+import EmailEventsPanel from "@/components/EmailEventsPanel";
 import { useAuth } from "@/lib/auth";
 import {
   ROLE_CONTENT_MANAGER,
@@ -20,12 +21,13 @@ import {
 } from "@/lib/roles";
 import { useEffect, useMemo, useState } from "react";
 
-const TABS = ["Analytics", "AI Logs", "Leads", "Users", "Institutions", "Subscriptions", "Domains", "Products", "Settings"] as const;
+const TABS = ["Analytics", "AI Logs", "Email Events", "Leads", "Users", "Institutions", "Subscriptions", "Domains", "Products", "Settings"] as const;
 type Tab = typeof TABS[number];
 
 const TAB_RULES: Record<Tab, string[]> = {
   Analytics: [ROLE_SUPER_ADMIN, ROLE_SUBSCRIPTION_MANAGER, ROLE_CONTENT_MANAGER],
   "AI Logs": [ROLE_SUPER_ADMIN, ROLE_SUBSCRIPTION_MANAGER, ROLE_CONTENT_MANAGER],
+  "Email Events": [ROLE_SUPER_ADMIN, ROLE_SUBSCRIPTION_MANAGER],
   Leads: [ROLE_SUPER_ADMIN, ROLE_SUBSCRIPTION_MANAGER],
   Users: [ROLE_SUPER_ADMIN, ROLE_SUBSCRIPTION_MANAGER],
   Institutions: [ROLE_SUPER_ADMIN, ROLE_SUBSCRIPTION_MANAGER],
@@ -97,6 +99,7 @@ export default function AdminPage() {
         {/* Tab Content */}
         {activeTab === "Analytics" && <AdminDashboard />}
         {activeTab === "AI Logs" && <AIGenerationPanel token={token} />}
+        {activeTab === "Email Events" && <EmailEventsPanel token={token} />}
         {activeTab === "Leads" && <LeadEventsPanel token={token} />}
         {activeTab === "Users" && <UserManagementPanel token={token} />}
         {activeTab === "Institutions" && <InstitutionPanel token={token} />}

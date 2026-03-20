@@ -13,5 +13,6 @@ type Handler struct {
 	Config      config.Config
 	Razorpay    services.RazorpayService
 	LeadWebhook services.LeadWebhookService
+	Notifier    *services.NotificationService
 	GoogleOAuth *oauth2.Config
 }

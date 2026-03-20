@@ -49,6 +49,11 @@ RAZORPAY_WEBHOOK_SECRET=your_rzp_webhook_secret
 LEAD_WEBHOOK_URL=https://your-crm.example.com/webhooks/leads
 LEAD_WEBHOOK_SECRET=your_crm_webhook_secret
 LEAD_COMPANY_ID=your_company_id
+AWS_REGION=ap-south-1
+SES_FROM_EMAIL=no-reply@yourdomain.com
+SES_CONFIGURATION_SET=
+SNS_ALERT_TOPIC_ARN=arn:aws:sns:ap-south-1:123456789012:app-alerts
+SES_SNS_TOPIC_ARN=arn:aws:sns:ap-south-1:123456789012:ses-events
 
 # AI
 GEMINI_API_KEY=your-gemini-api-key

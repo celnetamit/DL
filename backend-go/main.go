@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
@@ -35,6 +36,10 @@ func main() {
 	cfg := config.Load()
 	if err := cfg.Validate(); err != nil {
 		log.Fatalf("invalid configuration: %v", err)
+	}
+	notifier, err := services.NewNotificationService(context.Background(), cfg.AWSRegion, cfg.SESFromEmail, cfg.SESConfigurationSet, cfg.SNSAlertTopicARN, cfg.AppBaseURL)
+	if err != nil {
+		log.Fatalf("failed to initialize notification service: %v", err)
 	}
 	database := db.Connect(cfg.DatabaseURL)
 
@@ -118,6 +123,7 @@ func main() {
 			CompanyID:  cfg.LeadCompanyID,
 			WebsiteURL: cfg.AppBaseURL,
 		},
+		Notifier: notifier,
 		GoogleOAuth: &oauth2.Config{
 			ClientID:     cfg.GoogleClientID,
 			ClientSecret: cfg.GoogleClientSecret,
@@ -145,6 +151,7 @@ func main() {
 	{
 		api.POST("/auth/register", middleware.RateLimit(5, 10*time.Minute), handler.Register)
 		api.POST("/auth/login", middleware.RateLimit(5, 5*time.Minute), handler.Login)
+		api.POST("/notifications/ses-sns", handler.SESWebhook)
 		api.POST("/leads/contact", middleware.RateLimit(10, 10*time.Minute), handler.SubmitContactLead)
 		api.POST("/leads/purchase-request", middleware.RateLimit(10, 10*time.Minute), handler.SubmitPurchaseLead)
 		api.GET("/auth/google", handler.GoogleLogin)
@@ -173,6 +180,7 @@ func main() {
 
 			protected.GET("/analytics", middleware.RequireRole(authz.RoleSuperAdmin, authz.RoleSubscriptionManager, authz.RoleContentManager), handler.GetAdminAnalytics)
 			protected.GET("/ai/logs", middleware.RequireRole(authz.RoleSuperAdmin, authz.RoleSubscriptionManager, authz.RoleContentManager), handler.ListAIGenerationLogs)
+			protected.GET("/email-events", middleware.RequireRole(authz.RoleSuperAdmin, authz.RoleSubscriptionManager), handler.ListEmailEvents)
 			protected.GET("/leads", middleware.RequireRole(authz.RoleSuperAdmin, authz.RoleSubscriptionManager), handler.ListLeadEvents)
 			protected.POST("/leads/:id/retry", middleware.RequireRole(authz.RoleSuperAdmin, authz.RoleSubscriptionManager), handler.RetryLeadEvent)
 			protected.POST("/courses", middleware.RequireRole(authz.RoleInstructor, authz.RoleContentManager, authz.RoleSuperAdmin), handler.CreateCourse)

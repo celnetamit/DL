@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -60,6 +62,11 @@ func (h *Handler) SubmitContactLead(c *gin.Context) {
 	}
 
 	statusCode, responseData := h.createAndSyncLead(event)
+	if h.Notifier != nil {
+		if err := h.Notifier.SendLeadAcknowledgement(context.Background(), event.FullName, event.Email, "Contact Form"); err != nil {
+			log.Printf("failed to send contact acknowledgement email: %v", err)
+		}
+	}
 	utils.JSON(c, statusCode, "lead submitted", responseData)
 }
 
@@ -94,6 +101,11 @@ func (h *Handler) SubmitPurchaseLead(c *gin.Context) {
 	}
 
 	statusCode, responseData := h.createAndSyncLead(event)
+	if h.Notifier != nil {
+		if err := h.Notifier.SendLeadAcknowledgement(context.Background(), event.FullName, event.Email, "Purchase Request Form"); err != nil {
+			log.Printf("failed to send purchase request acknowledgement email: %v", err)
+		}
+	}
 	utils.JSON(c, statusCode, "lead submitted", responseData)
 }
 
@@ -265,7 +277,12 @@ func (h *Handler) SyncCheckoutLead(payment models.Payment) error {
 	_, responseData := h.createAndSyncLead(event)
 	if syncStatus, ok := responseData["sync_status"].(string); ok && syncStatus == "failed" {
 		if errText, ok := responseData["error"].(string); ok && errText != "" {
-			return fmt.Errorf(errText)
+			return fmt.Errorf("%s", errText)
+		}
+	}
+	if h.Notifier != nil {
+		if err := h.Notifier.SendCheckoutConfirmation(context.Background(), event.FullName, event.Email, event.ProductName); err != nil {
+			log.Printf("failed to send checkout confirmation email: %v", err)
 		}
 	}
 	return nil
@@ -287,6 +304,21 @@ func (h *Handler) createAndSyncLead(event models.LeadEvent) (int, gin.H) {
 			"last_attempted_at":  now,
 			"last_error":         errMessage,
 		})
+		if h.Notifier != nil {
+			alertPayload := map[string]interface{}{
+				"lead_id":      event.ID,
+				"lead_type":    event.LeadType,
+				"source":       event.Source,
+				"email":        event.Email,
+				"subject":      event.Subject,
+				"error":        errMessage,
+				"created_at":   event.CreatedAt,
+				"app_base_url": h.Config.AppBaseURL,
+			}
+			if publishErr := h.Notifier.PublishAlert(context.Background(), "Lead sync failed", alertPayload); publishErr != nil {
+				log.Printf("failed to publish lead sync alert: %v", publishErr)
+			}
+		}
 		return http.StatusAccepted, gin.H{
 			"lead_id":     event.ID,
 			"sync_status": "failed",

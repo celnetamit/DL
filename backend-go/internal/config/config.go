@@ -16,6 +16,11 @@ type Config struct {
 	CRMWebhookURL         string
 	CRMWebhookSecret      string
 	LeadCompanyID         string
+	AWSRegion             string
+	SESFromEmail          string
+	SESConfigurationSet   string
+	SNSAlertTopicARN      string
+	SESSNSTopicARN        string
 	AppBaseURL            string
 	AIEngineURL           string
 	GoogleClientID        string
@@ -36,6 +41,11 @@ func Load() Config {
 		CRMWebhookURL:         firstEnv("LEAD_WEBHOOK_URL", "CRM_WEBHOOK_URL"),
 		CRMWebhookSecret:      firstEnv("LEAD_WEBHOOK_SECRET", "CRM_WEBHOOK_SECRET"),
 		LeadCompanyID:         getEnv("LEAD_COMPANY_ID", ""),
+		AWSRegion:             getEnv("AWS_REGION", ""),
+		SESFromEmail:          getEnv("SES_FROM_EMAIL", ""),
+		SESConfigurationSet:   getEnv("SES_CONFIGURATION_SET", ""),
+		SNSAlertTopicARN:      getEnv("SNS_ALERT_TOPIC_ARN", ""),
+		SESSNSTopicARN:        getEnv("SES_SNS_TOPIC_ARN", ""),
 		AppBaseURL:            getEnv("APP_BASE_URL", "http://localhost:3000"),
 		AIEngineURL:           getEnv("AI_ENGINE_URL", "http://localhost:8000"),
 		GoogleClientID:        getEnv("GOOGLE_CLIENT_ID", ""),
@@ -71,6 +81,9 @@ func (c Config) Validate() error {
 	}
 	if c.CRMWebhookURL != "" && c.LeadCompanyID == "" {
 		return fmt.Errorf("LEAD_COMPANY_ID is required when LEAD_WEBHOOK_URL is set")
+	}
+	if (c.SESFromEmail != "" || c.SNSAlertTopicARN != "") && c.AWSRegion == "" {
+		return fmt.Errorf("AWS_REGION is required when SES or SNS notifications are enabled")
 	}
 	if (c.GoogleClientID != "" || c.GoogleClientSecret != "") && c.GoogleRedirectURL == "" {
 		return fmt.Errorf("GOOGLE_REDIRECT_URL is required when Google OAuth is enabled")

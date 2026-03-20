@@ -373,6 +373,17 @@ export async function getLeadEvents(
   return apiFetch<any[]>(`/api/v1/leads${suffix}`, { cache: "no-store" }, token);
 }
 
+export async function getEmailEvents(
+  token: string,
+  params: { event_type?: string; status?: string } = {},
+) {
+  const query = new URLSearchParams();
+  if (params.event_type) query.set("event_type", params.event_type);
+  if (params.status) query.set("status", params.status);
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return apiFetch<any[]>(`/api/v1/email-events${suffix}`, { cache: "no-store" }, token);
+}
+
 export async function retryLeadEvent(leadId: string, token: string) {
   return apiFetch<any>(`/api/v1/leads/${leadId}/retry`, {
     method: "POST",
