@@ -70,6 +70,22 @@ func TestGenerateMaterialReturnsBadGatewayWhenAIEngineFails(t *testing.T) {
 	}
 }
 
+func TestParseAIEngineErrorExtractsStructuredFailureFields(t *testing.T) {
+	raw := []byte(`{"detail":{"message":"Gemini blocked the prompt: SAFETY","failure_code":"gemini_prompt_safety","failure_category":"safety"}}`)
+
+	detail := parseAIEngineError(raw)
+
+	if detail.Message != "Gemini blocked the prompt: SAFETY" {
+		t.Fatalf("unexpected message: %#v", detail.Message)
+	}
+	if detail.FailureCode != "gemini_prompt_safety" {
+		t.Fatalf("unexpected failure code: %#v", detail.FailureCode)
+	}
+	if detail.FailureCategory != "safety" {
+		t.Fatalf("unexpected failure category: %#v", detail.FailureCategory)
+	}
+}
+
 func TestGenerateMaterialRejectsMalformedAIResponse(t *testing.T) {
 	originalClient := aiHTTPClient
 	aiHTTPClient = &http.Client{
@@ -177,6 +193,72 @@ func TestListAIGenerationLogsReturnsEnrichedRows(t *testing.T) {
 	}
 	if logs[0]["course_title"] != "AI Course" {
 		t.Fatalf("expected enriched course_title, got %#v", logs[0]["course_title"])
+	}
+	if logs[0]["failure_code"] != "" {
+		t.Fatalf("expected empty failure_code for success row, got %#v", logs[0]["failure_code"])
+	}
+	if _, exists := logs[0]["request_payload"]; exists {
+		t.Fatalf("expected request_payload to be omitted from api response")
+	}
+	if _, exists := logs[0]["response_payload"]; exists {
+		t.Fatalf("expected response_payload to be omitted from api response")
+	}
+}
+
+func TestSanitizeAIRequestPayloadRedactsLargeSourceText(t *testing.T) {
+	req := generateRequest{
+		URL:   "https://example.com/article",
+		Text:  strings.Repeat("A", 400),
+		Title: "Requested Lesson",
+	}
+
+	payload := sanitizeAIRequestPayload(req, 5)
+	var data map[string]interface{}
+	if err := json.Unmarshal(payload, &data); err != nil {
+		t.Fatalf("failed to decode sanitized request payload: %v", err)
+	}
+
+	if data["text_length"].(float64) != 400 {
+		t.Fatalf("expected text_length to be retained, got %#v", data["text_length"])
+	}
+	preview, _ := data["text_preview"].(string)
+	if len(preview) >= 400 {
+		t.Fatalf("expected text preview to be redacted and truncated, got length %d", len(preview))
+	}
+	if data["source_type"] != "url" {
+		t.Fatalf("expected source_type url, got %#v", data["source_type"])
+	}
+}
+
+func TestSanitizeAIResponsePayloadRedactsFullAIOutput(t *testing.T) {
+	payload := sanitizeAIResponsePayload(aiGenerateResponse{
+		Title:         "Lesson",
+		Summary:       strings.Repeat("summary ", 80),
+		KeyPoints:     []string{"one", "two", "three"},
+		Flashcards:    []any{1, 2, 3, 4},
+		Provider:      "gemini",
+		Model:         "gemini-1.5-flash",
+		PromptVersion: "v2",
+		GeneratedAt:   time.Now().UTC().Format(time.RFC3339),
+	})
+
+	var data map[string]interface{}
+	if err := json.Unmarshal(payload, &data); err != nil {
+		t.Fatalf("failed to decode sanitized response payload: %v", err)
+	}
+
+	if _, exists := data["summary"]; exists {
+		t.Fatalf("expected raw summary to be omitted from stored audit payload")
+	}
+	if data["key_point_count"].(float64) != 3 {
+		t.Fatalf("expected key point count, got %#v", data["key_point_count"])
+	}
+	if data["flashcard_count"].(float64) != 4 {
+		t.Fatalf("expected flashcard count, got %#v", data["flashcard_count"])
+	}
+	preview, _ := data["summary_preview"].(string)
+	if len(preview) == 0 {
+		t.Fatalf("expected summary preview to be present")
 	}
 }
 

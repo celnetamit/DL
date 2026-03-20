@@ -7,6 +7,8 @@ import Toast from "@/components/Toast";
 type AILog = {
   id: string;
   status: string;
+  failure_code?: string;
+  failure_category?: string;
   provider: string;
   model: string;
   prompt_version: string;
@@ -146,6 +148,16 @@ export default function AIGenerationPanel({ token }: { token: string | null }) {
                       <span className="text-[10px] uppercase tracking-widest text-dune/45">{entry.provider}</span>
                       <span className="text-[10px] uppercase tracking-widest text-dune/45">{entry.model}</span>
                       <span className="text-[10px] uppercase tracking-widest text-dune/45">{entry.prompt_version}</span>
+                      {entry.failure_category && (
+                        <span className="rounded-full bg-ember/10 px-2 py-1 text-[10px] uppercase tracking-widest text-ember">
+                          {entry.failure_category}
+                        </span>
+                      )}
+                      {entry.failure_code && (
+                        <span className="rounded-full bg-dune/10 px-2 py-1 text-[10px] uppercase tracking-widest text-dune/55">
+                          {entry.failure_code}
+                        </span>
+                      )}
                     </div>
                     <p className="mt-3 font-semibold text-dune">{entry.lesson_title || entry.requested_title || "Untitled AI Generation"}</p>
                     <p className="mt-1 text-xs text-dune/55">

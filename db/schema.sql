@@ -219,6 +219,8 @@ CREATE TABLE IF NOT EXISTS ai_generation_logs (
   model VARCHAR(150) NOT NULL,
   prompt_version VARCHAR(50) NOT NULL DEFAULT 'v1',
   status VARCHAR(50) NOT NULL DEFAULT 'success',
+  failure_code VARCHAR(100) NOT NULL DEFAULT '',
+  failure_category VARCHAR(100) NOT NULL DEFAULT '',
   source_type VARCHAR(50) NOT NULL,
   source_url TEXT,
   requested_title TEXT NOT NULL DEFAULT '',
@@ -233,6 +235,8 @@ CREATE INDEX IF NOT EXISTS idx_ai_generation_logs_course_id ON ai_generation_log
 CREATE INDEX IF NOT EXISTS idx_ai_generation_logs_module_id ON ai_generation_logs (module_id);
 CREATE INDEX IF NOT EXISTS idx_ai_generation_logs_lesson_id ON ai_generation_logs (lesson_id);
 CREATE INDEX IF NOT EXISTS idx_ai_generation_logs_status ON ai_generation_logs (status);
+CREATE INDEX IF NOT EXISTS idx_ai_generation_logs_failure_code ON ai_generation_logs (failure_code);
+CREATE INDEX IF NOT EXISTS idx_ai_generation_logs_failure_category ON ai_generation_logs (failure_category);
 CREATE INDEX IF NOT EXISTS idx_ai_generation_logs_created_at ON ai_generation_logs (created_at DESC);
 
 CREATE TABLE IF NOT EXISTS progress (

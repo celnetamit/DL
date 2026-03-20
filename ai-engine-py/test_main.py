@@ -15,8 +15,12 @@ class GeminiHardeningTests(unittest.TestCase):
         }
 
         self.assertEqual(
-            main.extract_gemini_block_reason(payload),
-            "Gemini blocked the prompt: SAFETY",
+            main.extract_gemini_block_metadata(payload),
+            {
+                "message": "Gemini blocked the prompt: SAFETY",
+                "failure_code": "gemini_prompt_safety",
+                "failure_category": "safety",
+            },
         )
 
     def test_extract_gemini_block_reason_from_candidate_finish_reason(self):
@@ -29,8 +33,12 @@ class GeminiHardeningTests(unittest.TestCase):
         }
 
         self.assertEqual(
-            main.extract_gemini_block_reason(payload),
-            "Gemini stopped generation due to safety",
+            main.extract_gemini_block_metadata(payload),
+            {
+                "message": "Gemini stopped generation due to safety",
+                "failure_code": "gemini_safety",
+                "failure_category": "safety",
+            },
         )
 
     def test_format_gemini_http_error_uses_structured_payload(self):
@@ -86,7 +94,8 @@ class GeminiHardeningTests(unittest.TestCase):
             main.post_to_gemini("prompt text")
 
         self.assertEqual(ctx.exception.status_code, 502)
-        self.assertIn("INVALID_ARGUMENT", ctx.exception.detail)
+        self.assertEqual(ctx.exception.detail["failure_code"], "gemini_request_rejected")
+        self.assertIn("INVALID_ARGUMENT", ctx.exception.detail["message"])
 
 
 if __name__ == "__main__":

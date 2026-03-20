@@ -65,7 +65,7 @@ def health():
 @app.post("/api/v1/generate-course-material", response_model=MaterialResponse)
 def generate_course_material(payload: GenerateMaterialRequest):
     if not GEMINI_API_KEY:
-        raise HTTPException(status_code=503, detail="Gemini API is not configured")
+        raise ai_http_error(503, "Gemini API is not configured", "gemini_not_configured", "configuration")
 
     content = ""
     if payload.text:
@@ -73,11 +73,11 @@ def generate_course_material(payload: GenerateMaterialRequest):
     elif payload.url:
         content = scrape_url(payload.url)
     else:
-        raise HTTPException(status_code=400, detail="url or text is required")
+        raise ai_http_error(400, "url or text is required", "missing_source", "validation")
 
     cleaned = normalize_text(content)
     if not cleaned:
-        raise HTTPException(status_code=422, detail="no usable content found")
+        raise ai_http_error(422, "no usable content found", "empty_source_content", "validation")
 
     result = generate_with_gemini(cleaned, payload.title, payload.num_questions)
     return MaterialResponse(**result)
@@ -104,21 +104,21 @@ def fetch_safe_url(url: str) -> str:
                 headers={"User-Agent": "DigitalLibrary-AIEngine/1.0"},
             )
         except requests.RequestException as exc:
-            raise HTTPException(status_code=422, detail=f"failed to fetch source url: {exc}") from exc
+            raise ai_http_error(422, f"failed to fetch source url: {exc}", "source_fetch_failed", "source_fetch") from exc
 
         if 300 <= response.status_code < 400:
             location = response.headers.get("Location", "").strip()
             if not location:
-                raise HTTPException(status_code=422, detail="source url redirect did not include a location")
+                raise ai_http_error(422, "source url redirect did not include a location", "invalid_redirect", "source_fetch")
             current_url = validate_public_url(urljoin(current_url, location))
             continue
 
         if response.status_code >= 400:
-            raise HTTPException(status_code=422, detail=f"source url returned status {response.status_code}")
+            raise ai_http_error(422, f"source url returned status {response.status_code}", "source_fetch_failed", "source_fetch")
 
         content_type = response.headers.get("Content-Type", "").split(";")[0].strip().lower()
         if content_type and content_type not in ALLOWED_CONTENT_TYPES:
-            raise HTTPException(status_code=422, detail="source url returned an unsupported content type")
+            raise ai_http_error(422, "source url returned an unsupported content type", "unsupported_content_type", "source_fetch")
 
         chunks: List[bytes] = []
         total = 0
@@ -128,7 +128,7 @@ def fetch_safe_url(url: str) -> str:
                     continue
                 total += len(chunk)
                 if total > MAX_SOURCE_BYTES:
-                    raise HTTPException(status_code=422, detail="source url content is too large")
+                    raise ai_http_error(422, "source url content is too large", "source_too_large", "source_fetch")
                 chunks.append(chunk)
         finally:
             response.close()
@@ -136,26 +136,26 @@ def fetch_safe_url(url: str) -> str:
         encoding = response.encoding or response.apparent_encoding or "utf-8"
         return b"".join(chunks).decode(encoding, errors="replace")
 
-    raise HTTPException(status_code=422, detail="source url exceeded redirect limit")
+    raise ai_http_error(422, "source url exceeded redirect limit", "redirect_limit_exceeded", "source_fetch")
 
 
 def validate_public_url(raw_url: str) -> str:
     parsed = urlparse(raw_url.strip())
     if parsed.scheme not in {"http", "https"}:
-        raise HTTPException(status_code=422, detail="source url must use http or https")
+        raise ai_http_error(422, "source url must use http or https", "invalid_source_scheme", "source_validation")
     if not parsed.netloc or not parsed.hostname:
-        raise HTTPException(status_code=422, detail="source url must include a valid hostname")
+        raise ai_http_error(422, "source url must include a valid hostname", "invalid_source_url", "source_validation")
     if parsed.username or parsed.password:
-        raise HTTPException(status_code=422, detail="source url must not include credentials")
+        raise ai_http_error(422, "source url must not include credentials", "credentials_not_allowed", "source_validation")
 
     hostname = parsed.hostname.strip().lower()
     if hostname in {"localhost", "127.0.0.1", "::1"}:
-        raise HTTPException(status_code=422, detail="source url host is not allowed")
+        raise ai_http_error(422, "source url host is not allowed", "blocked_source_host", "source_validation")
 
     try:
         address_info = socket.getaddrinfo(hostname, parsed.port or (443 if parsed.scheme == "https" else 80), type=socket.SOCK_STREAM)
     except socket.gaierror as exc:
-        raise HTTPException(status_code=422, detail=f"source url hostname could not be resolved: {exc}") from exc
+        raise ai_http_error(422, f"source url hostname could not be resolved: {exc}", "source_resolution_failed", "source_validation") from exc
 
     for entry in address_info:
         resolved_ip = entry[4][0]
@@ -168,7 +168,7 @@ def validate_public_url(raw_url: str) -> str:
             or ip_obj.is_multicast
             or ip_obj.is_unspecified
         ):
-            raise HTTPException(status_code=422, detail="source url resolves to a non-public network")
+            raise ai_http_error(422, "source url resolves to a non-public network", "blocked_private_network", "source_validation")
 
     return parsed.geturl()
 
@@ -213,18 +213,23 @@ def generate_with_gemini(text: str, title: Optional[str], num_questions: int) ->
     response = post_to_gemini(prompt)
 
     payload = response.json()
-    blocked_reason = extract_gemini_block_reason(payload)
-    if blocked_reason:
-        raise HTTPException(status_code=502, detail=blocked_reason)
+    blocked_metadata = extract_gemini_block_metadata(payload)
+    if blocked_metadata:
+        raise ai_http_error(
+            502,
+            blocked_metadata["message"],
+            blocked_metadata["failure_code"],
+            blocked_metadata["failure_category"],
+        )
 
     text_output = extract_gemini_text(payload)
     if not text_output:
-        raise HTTPException(status_code=502, detail="Gemini returned no usable content")
+        raise ai_http_error(502, "Gemini returned no usable content", "gemini_empty_response", "upstream")
 
     try:
         parsed = json.loads(strip_json_fence(text_output))
     except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=502, detail=f"Gemini returned invalid JSON: {exc}") from exc
+        raise ai_http_error(502, f"Gemini returned invalid JSON: {exc}", "gemini_invalid_json", "validation") from exc
 
     return validate_material_payload(parsed, num_questions)
 
@@ -253,21 +258,23 @@ def post_to_gemini(prompt: str) -> requests.Response:
             if attempt < len(GEMINI_RETRY_DELAYS):
                 time.sleep(GEMINI_RETRY_DELAYS[attempt])
                 continue
-            raise HTTPException(status_code=502, detail=f"Gemini request failed: {exc}") from exc
+            raise ai_http_error(502, f"Gemini request failed: {exc}", "gemini_transport_error", "upstream") from exc
 
         if should_retry_gemini_response(response.status_code) and attempt < len(GEMINI_RETRY_DELAYS):
             time.sleep(GEMINI_RETRY_DELAYS[attempt])
             continue
 
         if response.status_code >= 400:
-            raise HTTPException(
-                status_code=502,
-                detail=format_gemini_http_error(response),
+            raise ai_http_error(
+                502,
+                format_gemini_http_error(response),
+                classify_gemini_http_error(response.status_code),
+                "upstream",
             )
 
         return response
 
-    raise HTTPException(status_code=502, detail=f"Gemini request failed: {last_error}")
+    raise ai_http_error(502, f"Gemini request failed: {last_error}", "gemini_transport_error", "upstream")
 
 
 def should_retry_gemini_response(status_code: int) -> bool:
@@ -295,17 +302,25 @@ def format_gemini_http_error(response: requests.Response) -> str:
     return f"Gemini request failed with status {response.status_code}: {joined}"
 
 
-def extract_gemini_block_reason(payload: dict) -> str:
+def extract_gemini_block_metadata(payload: dict) -> Optional[Dict[str, str]]:
     prompt_feedback = payload.get("promptFeedback") or {}
     block_reason = str(prompt_feedback.get("blockReason") or "").strip()
     if block_reason:
-        return f"Gemini blocked the prompt: {block_reason}"
+        return {
+            "message": f"Gemini blocked the prompt: {block_reason}",
+            "failure_code": f"gemini_prompt_{block_reason.lower()}",
+            "failure_category": "safety",
+        }
 
     candidates = payload.get("candidates") or []
     for candidate in candidates:
         finish_reason = str(candidate.get("finishReason") or "").strip()
         if finish_reason in {"SAFETY", "BLOCKLIST", "PROHIBITED_CONTENT", "RECITATION", "SPII"}:
-            return f"Gemini stopped generation due to {finish_reason.lower().replace('_', ' ')}"
+            return {
+                "message": f"Gemini stopped generation due to {finish_reason.lower().replace('_', ' ')}",
+                "failure_code": f"gemini_{finish_reason.lower()}",
+                "failure_category": "safety",
+            }
 
         safety_ratings = candidate.get("safetyRatings") or []
         blocked_categories = []
@@ -319,9 +334,13 @@ def extract_gemini_block_reason(payload: dict) -> str:
                 blocked_categories.append(category)
         if blocked_categories:
             categories = ", ".join(blocked_categories[:3])
-            return f"Gemini safety filters blocked or flagged the response: {categories}"
+            return {
+                "message": f"Gemini safety filters blocked or flagged the response: {categories}",
+                "failure_code": "gemini_safety_filtered",
+                "failure_category": "safety",
+            }
 
-    return ""
+    return None
 
 
 def extract_gemini_text(payload: dict) -> str:
@@ -346,14 +365,14 @@ def strip_json_fence(text: str) -> str:
 
 def validate_material_payload(payload: Dict[str, Any], num_questions: int) -> dict:
     if not isinstance(payload, dict):
-        raise HTTPException(status_code=502, detail="Gemini returned an unexpected response shape")
+        raise ai_http_error(502, "Gemini returned an unexpected response shape", "gemini_invalid_shape", "validation")
 
     title = str(payload.get("title") or "").strip()
     summary = str(payload.get("summary") or "").strip()
     if not title:
         title = "AI Generated Lesson"
     if not summary:
-        raise HTTPException(status_code=502, detail="Gemini returned no usable summary")
+        raise ai_http_error(502, "Gemini returned no usable summary", "gemini_missing_summary", "validation")
 
     key_points_raw = payload.get("key_points")
     if not isinstance(key_points_raw, list):
@@ -362,7 +381,7 @@ def validate_material_payload(payload: Dict[str, Any], num_questions: int) -> di
     if len(key_points) < 3:
         key_points = split_summary_into_key_points(summary)
     if len(key_points) < 3:
-        raise HTTPException(status_code=502, detail="Gemini returned too few key points")
+        raise ai_http_error(502, "Gemini returned too few key points", "gemini_insufficient_key_points", "validation")
     key_points = key_points[:6]
 
     flashcards_raw = payload.get("flashcards")
@@ -373,7 +392,7 @@ def validate_material_payload(payload: Dict[str, Any], num_questions: int) -> di
     if len(flashcards) < 2:
         flashcards = build_fallback_flashcards(title, key_points, summary, target_flashcards)
     if len(flashcards) < 2:
-        raise HTTPException(status_code=502, detail="Gemini returned too few usable flashcards")
+        raise ai_http_error(502, "Gemini returned too few usable flashcards", "gemini_insufficient_flashcards", "validation")
     flashcards = flashcards[:target_flashcards]
 
     return {
@@ -420,3 +439,24 @@ def build_fallback_flashcards(title: str, key_points: List[str], summary: str, c
         seen.add(signature)
         unique_cards.append(card)
     return unique_cards[:count]
+
+
+def ai_http_error(status_code: int, message: str, failure_code: str, failure_category: str) -> HTTPException:
+    return HTTPException(
+        status_code=status_code,
+        detail={
+            "message": message,
+            "failure_code": failure_code,
+            "failure_category": failure_category,
+        },
+    )
+
+
+def classify_gemini_http_error(status_code: int) -> str:
+    if status_code == 429:
+        return "gemini_rate_limited"
+    if 500 <= status_code < 600:
+        return "gemini_upstream_error"
+    if 400 <= status_code < 500:
+        return "gemini_request_rejected"
+    return "gemini_http_error"

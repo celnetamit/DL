@@ -40,6 +40,14 @@ type aiGenerateResponse struct {
 	GeneratedAt   string   `json:"generated_at"`
 }
 
+type aiEngineErrorDetail struct {
+	Message         string `json:"message"`
+	FailureCode     string `json:"failure_code"`
+	FailureCategory string `json:"failure_category"`
+}
+
+const maxAIAuditPreviewLength = 240
+
 func (h *Handler) GenerateMaterial(c *gin.Context) {
 	userID := c.GetString("user_id")
 	var req generateRequest
@@ -61,7 +69,7 @@ func (h *Handler) GenerateMaterial(c *gin.Context) {
 		"num_questions": 5,
 	}
 	body, _ := json.Marshal(aiPayload)
-	requestPayload := datatypes.JSON(body)
+	requestPayload := sanitizeAIRequestPayload(req, 5)
 
 	// Call Python AI
 	aiEndpoint := h.Config.AIEngineURL + "/api/v1/generate-course-material"
@@ -74,7 +82,7 @@ func (h *Handler) GenerateMaterial(c *gin.Context) {
 
 	resp, err := aiHTTPClient.Do(httpReq)
 	if err != nil {
-		h.recordAIGenerationFailure(userID, req, requestPayload, "", "", "", fmt.Sprintf("failed to reach ai engine: %v", err))
+		h.recordAIGenerationFailure(userID, req, requestPayload, "", "", "", "ai_engine_unreachable", "transport", fmt.Sprintf("failed to reach ai engine: %v", err))
 		utils.JSON(c, http.StatusBadGateway, "failed to reach ai engine", gin.H{"error": err.Error()})
 		return
 	}
@@ -82,28 +90,25 @@ func (h *Handler) GenerateMaterial(c *gin.Context) {
 
 	if resp.StatusCode != http.StatusOK {
 		errorBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		detail := strings.TrimSpace(string(errorBody))
-		if detail == "" {
-			detail = "upstream ai engine returned an error"
-		}
-		h.recordAIGenerationFailure(userID, req, requestPayload, "", "", "", detail)
-		utils.JSON(c, http.StatusBadGateway, "ai engine error", gin.H{"error": detail})
+		parsed := parseAIEngineError(errorBody)
+		h.recordAIGenerationFailure(userID, req, requestPayload, "", "", "", parsed.FailureCode, parsed.FailureCategory, parsed.Message)
+		utils.JSON(c, http.StatusBadGateway, "ai engine error", gin.H{"error": parsed.Message})
 		return
 	}
 
 	var aiResult aiGenerateResponse
 	if err := json.NewDecoder(resp.Body).Decode(&aiResult); err != nil {
-		h.recordAIGenerationFailure(userID, req, requestPayload, "", "", "", fmt.Sprintf("failed to decode ai response: %v", err))
+		h.recordAIGenerationFailure(userID, req, requestPayload, "", "", "", "ai_response_decode_failed", "upstream", fmt.Sprintf("failed to decode ai response: %v", err))
 		utils.JSON(c, http.StatusInternalServerError, "failed to decode ai response", gin.H{"error": err.Error()})
 		return
 	}
 	if err := validateAIResult(aiResult); err != nil {
-		h.recordAIGenerationFailure(userID, req, requestPayload, aiResult.Provider, aiResult.Model, aiResult.PromptVersion, err.Error())
+		h.recordAIGenerationFailure(userID, req, requestPayload, aiResult.Provider, aiResult.Model, aiResult.PromptVersion, "ai_response_invalid", "validation", err.Error())
 		utils.JSON(c, http.StatusBadGateway, "invalid ai response", gin.H{"error": err.Error()})
 		return
 	}
 
-	responsePayload, _ := json.Marshal(aiResult)
+	responsePayload := sanitizeAIResponsePayload(aiResult)
 
 	metadataBytes, _ := json.Marshal(map[string]interface{}{
 		"summary":        aiResult.Summary,
@@ -131,7 +136,7 @@ func (h *Handler) GenerateMaterial(c *gin.Context) {
 		Metadata:        metadataBytes,
 	}
 
-	if err := h.persistGeneratedLessonAndAudit(userID, req, requestPayload, datatypes.JSON(responsePayload), aiResult, &lesson); err != nil {
+	if err := h.persistGeneratedLessonAndAudit(userID, req, requestPayload, responsePayload, aiResult, &lesson); err != nil {
 		utils.JSON(c, http.StatusInternalServerError, "failed to save generated lesson", gin.H{"error": err.Error()})
 		return
 	}
@@ -188,17 +193,49 @@ func (h *Handler) ListAIGenerationLogs(c *gin.Context) {
 	}
 
 	type logRow struct {
-		models.AIGenerationLog
-		UserEmail   string `json:"user_email"`
-		UserName    string `json:"user_name"`
-		LessonTitle string `json:"lesson_title"`
-		ModuleTitle string `json:"module_title"`
-		CourseTitle string `json:"course_title"`
+		ID              string    `json:"id"`
+		UserID          *string   `json:"user_id"`
+		CourseID        string    `json:"course_id"`
+		ModuleID        string    `json:"module_id"`
+		LessonID        *string   `json:"lesson_id"`
+		Provider        string    `json:"provider"`
+		Model           string    `json:"model"`
+		PromptVersion   string    `json:"prompt_version"`
+		Status          string    `json:"status"`
+		FailureCode     string    `json:"failure_code"`
+		FailureCategory string    `json:"failure_category"`
+		SourceType      string    `json:"source_type"`
+		SourceURL       *string   `json:"source_url"`
+		RequestedTitle  string    `json:"requested_title"`
+		ErrorMessage    string    `json:"error_message"`
+		CreatedAt       time.Time `json:"created_at"`
+		UserEmail       string    `json:"user_email"`
+		UserName        string    `json:"user_name"`
+		LessonTitle     string    `json:"lesson_title"`
+		ModuleTitle     string    `json:"module_title"`
+		CourseTitle     string    `json:"course_title"`
 	}
 
 	rows := make([]logRow, 0, len(logs))
 	for _, entry := range logs {
-		row := logRow{AIGenerationLog: entry}
+		row := logRow{
+			ID:              entry.ID,
+			UserID:          entry.UserID,
+			CourseID:        entry.CourseID,
+			ModuleID:        entry.ModuleID,
+			LessonID:        entry.LessonID,
+			Provider:        entry.Provider,
+			Model:           entry.Model,
+			PromptVersion:   entry.PromptVersion,
+			Status:          entry.Status,
+			FailureCode:     entry.FailureCode,
+			FailureCategory: entry.FailureCategory,
+			SourceType:      entry.SourceType,
+			SourceURL:       entry.SourceURL,
+			RequestedTitle:  entry.RequestedTitle,
+			ErrorMessage:    entry.ErrorMessage,
+			CreatedAt:       entry.CreatedAt,
+		}
 		if entry.UserID != nil {
 			var user models.User
 			if err := h.DB.Select("email, full_name").First(&user, "id = ?", *entry.UserID).Error; err == nil {
@@ -232,7 +269,7 @@ func (h *Handler) persistGeneratedLessonAndAudit(userID string, req generateRequ
 			return err
 		}
 
-		record := buildAIGenerationLog(userID, req, requestPayload, responsePayload, aiResult.Provider, aiResult.Model, aiResult.PromptVersion, "success", "", &lesson.ID)
+		record := buildAIGenerationLog(userID, req, requestPayload, responsePayload, aiResult.Provider, aiResult.Model, aiResult.PromptVersion, "success", "", "", "", &lesson.ID)
 		if err := tx.Create(&record).Error; err != nil {
 			return err
 		}
@@ -240,17 +277,17 @@ func (h *Handler) persistGeneratedLessonAndAudit(userID string, req generateRequ
 	})
 }
 
-func (h *Handler) recordAIGenerationFailure(userID string, req generateRequest, requestPayload datatypes.JSON, provider, model, promptVersion, errorMessage string) {
+func (h *Handler) recordAIGenerationFailure(userID string, req generateRequest, requestPayload datatypes.JSON, provider, model, promptVersion, failureCode, failureCategory, errorMessage string) {
 	if h.DB == nil {
 		return
 	}
-	record := buildAIGenerationLog(userID, req, requestPayload, datatypes.JSON([]byte(`{}`)), provider, model, promptVersion, "failed", errorMessage, nil)
+	record := buildAIGenerationLog(userID, req, requestPayload, datatypes.JSON([]byte(`{}`)), provider, model, promptVersion, "failed", failureCode, failureCategory, errorMessage, nil)
 	if err := h.DB.Create(&record).Error; err != nil {
 		log.Printf("failed to record ai generation log: %v", err)
 	}
 }
 
-func buildAIGenerationLog(userID string, req generateRequest, requestPayload, responsePayload datatypes.JSON, provider, model, promptVersion, status, errorMessage string, lessonID *string) models.AIGenerationLog {
+func buildAIGenerationLog(userID string, req generateRequest, requestPayload, responsePayload datatypes.JSON, provider, model, promptVersion, status, failureCode, failureCategory, errorMessage string, lessonID *string) models.AIGenerationLog {
 	var userIDPtr *string
 	if strings.TrimSpace(userID) != "" {
 		userIDPtr = &userID
@@ -270,6 +307,8 @@ func buildAIGenerationLog(userID string, req generateRequest, requestPayload, re
 		Model:           fallbackString(model, "unknown"),
 		PromptVersion:   fallbackString(promptVersion, "v1"),
 		Status:          status,
+		FailureCode:     strings.TrimSpace(failureCode),
+		FailureCategory: strings.TrimSpace(failureCategory),
 		SourceType:      sourceType,
 		RequestedTitle:  req.Title,
 		ErrorMessage:    errorMessage,
@@ -287,4 +326,85 @@ func fallbackString(value, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func sanitizeAIRequestPayload(req generateRequest, numQuestions int) datatypes.JSON {
+	payload := map[string]interface{}{
+		"url":           strings.TrimSpace(req.URL),
+		"title":         strings.TrimSpace(req.Title),
+		"num_questions": numQuestions,
+		"source_type":   map[bool]string{true: "url", false: "text"}[strings.TrimSpace(req.URL) != ""],
+		"text_mode":     strings.TrimSpace(req.Text) != "",
+		"text_length":   len(strings.TrimSpace(req.Text)),
+		"text_preview":  truncatedPreview(req.Text, maxAIAuditPreviewLength),
+	}
+	bytes, _ := json.Marshal(payload)
+	return datatypes.JSON(bytes)
+}
+
+func sanitizeAIResponsePayload(result aiGenerateResponse) datatypes.JSON {
+	payload := map[string]interface{}{
+		"title":           strings.TrimSpace(result.Title),
+		"summary_preview": truncatedPreview(result.Summary, maxAIAuditPreviewLength),
+		"key_point_count": len(result.KeyPoints),
+		"flashcard_count": len(result.Flashcards),
+		"provider":        strings.TrimSpace(result.Provider),
+		"model":           strings.TrimSpace(result.Model),
+		"prompt_version":  strings.TrimSpace(result.PromptVersion),
+		"generated_at":    strings.TrimSpace(result.GeneratedAt),
+	}
+	bytes, _ := json.Marshal(payload)
+	return datatypes.JSON(bytes)
+}
+
+func truncatedPreview(value string, limit int) string {
+	cleaned := strings.TrimSpace(value)
+	if limit <= 0 || len(cleaned) <= limit {
+		return cleaned
+	}
+	return cleaned[:limit] + "..."
+}
+
+func parseAIEngineError(raw []byte) aiEngineErrorDetail {
+	detail := aiEngineErrorDetail{
+		Message:         "upstream ai engine returned an error",
+		FailureCode:     "ai_engine_error",
+		FailureCategory: "upstream",
+	}
+
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" {
+		return detail
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		detail.Message = trimmed
+		return detail
+	}
+
+	rawDetail, ok := payload["detail"]
+	if !ok {
+		detail.Message = trimmed
+		return detail
+	}
+
+	switch value := rawDetail.(type) {
+	case string:
+		if strings.TrimSpace(value) != "" {
+			detail.Message = strings.TrimSpace(value)
+		}
+	case map[string]interface{}:
+		if message, ok := value["message"].(string); ok && strings.TrimSpace(message) != "" {
+			detail.Message = strings.TrimSpace(message)
+		}
+		if code, ok := value["failure_code"].(string); ok && strings.TrimSpace(code) != "" {
+			detail.FailureCode = strings.TrimSpace(code)
+		}
+		if category, ok := value["failure_category"].(string); ok && strings.TrimSpace(category) != "" {
+			detail.FailureCategory = strings.TrimSpace(category)
+		}
+	}
+
+	return detail
 }
