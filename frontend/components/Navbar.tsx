@@ -8,7 +8,6 @@ import { useAuth } from "@/lib/auth";
 const NAV_LINKS = [
   { name: "Home", href: "/" },
   { name: "Pricing", href: "/pricing" },
-  { name: "Journal Index", href: "/product/84e67685-296e-454a-ba3f-79c9b1b08a9b" },
   { name: "Contact", href: "/contact" },
 ];
 
@@ -40,10 +39,10 @@ export default function Navbar() {
         {/* Logo */}
         <Link href="/" className="group flex items-center gap-3" aria-label="Digital Library Home">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-ember text-xl font-bold text-midnight transition-transform group-hover:scale-110">
-            A
+            DL
           </div>
           <span className="font-[var(--font-space)] text-xl font-bold tracking-tight text-dune">
-            Aether<span className="text-ember">LMS</span>
+            Digital<span className="text-ember">Library</span>
           </span>
         </Link>
 
