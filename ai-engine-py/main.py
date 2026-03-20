@@ -3,8 +3,12 @@ from __future__ import annotations
 import json
 import os
 import re
+import socket
+import time
 from datetime import datetime, timezone
+from ipaddress import ip_address
 from typing import Any, Dict, List, Optional
+from urllib.parse import urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -18,6 +22,10 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash").strip()
 GEMINI_API_URL = (
     f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 )
+MAX_SOURCE_BYTES = 1_000_000
+MAX_REDIRECTS = 3
+ALLOWED_CONTENT_TYPES = ("text/html", "text/plain", "application/xhtml+xml")
+GEMINI_RETRY_DELAYS = (0.5, 1.5)
 
 
 class GenerateMaterialRequest(BaseModel):
@@ -76,11 +84,93 @@ def generate_course_material(payload: GenerateMaterialRequest):
 
 
 def scrape_url(url: str) -> str:
-    resp = requests.get(url, timeout=15)
-    resp.raise_for_status()
-    soup = BeautifulSoup(resp.text, "html.parser")
+    resp = fetch_safe_url(url)
+    soup = BeautifulSoup(resp, "html.parser")
     paragraphs = [p.get_text(" ", strip=True) for p in soup.find_all("p")]
     return "\n".join(paragraphs)
+
+
+def fetch_safe_url(url: str) -> str:
+    current_url = validate_public_url(url)
+    session = requests.Session()
+
+    for _ in range(MAX_REDIRECTS + 1):
+        try:
+            response = session.get(
+                current_url,
+                timeout=15,
+                allow_redirects=False,
+                stream=True,
+                headers={"User-Agent": "DigitalLibrary-AIEngine/1.0"},
+            )
+        except requests.RequestException as exc:
+            raise HTTPException(status_code=422, detail=f"failed to fetch source url: {exc}") from exc
+
+        if 300 <= response.status_code < 400:
+            location = response.headers.get("Location", "").strip()
+            if not location:
+                raise HTTPException(status_code=422, detail="source url redirect did not include a location")
+            current_url = validate_public_url(urljoin(current_url, location))
+            continue
+
+        if response.status_code >= 400:
+            raise HTTPException(status_code=422, detail=f"source url returned status {response.status_code}")
+
+        content_type = response.headers.get("Content-Type", "").split(";")[0].strip().lower()
+        if content_type and content_type not in ALLOWED_CONTENT_TYPES:
+            raise HTTPException(status_code=422, detail="source url returned an unsupported content type")
+
+        chunks: List[bytes] = []
+        total = 0
+        try:
+            for chunk in response.iter_content(chunk_size=8192):
+                if not chunk:
+                    continue
+                total += len(chunk)
+                if total > MAX_SOURCE_BYTES:
+                    raise HTTPException(status_code=422, detail="source url content is too large")
+                chunks.append(chunk)
+        finally:
+            response.close()
+
+        encoding = response.encoding or response.apparent_encoding or "utf-8"
+        return b"".join(chunks).decode(encoding, errors="replace")
+
+    raise HTTPException(status_code=422, detail="source url exceeded redirect limit")
+
+
+def validate_public_url(raw_url: str) -> str:
+    parsed = urlparse(raw_url.strip())
+    if parsed.scheme not in {"http", "https"}:
+        raise HTTPException(status_code=422, detail="source url must use http or https")
+    if not parsed.netloc or not parsed.hostname:
+        raise HTTPException(status_code=422, detail="source url must include a valid hostname")
+    if parsed.username or parsed.password:
+        raise HTTPException(status_code=422, detail="source url must not include credentials")
+
+    hostname = parsed.hostname.strip().lower()
+    if hostname in {"localhost", "127.0.0.1", "::1"}:
+        raise HTTPException(status_code=422, detail="source url host is not allowed")
+
+    try:
+        address_info = socket.getaddrinfo(hostname, parsed.port or (443 if parsed.scheme == "https" else 80), type=socket.SOCK_STREAM)
+    except socket.gaierror as exc:
+        raise HTTPException(status_code=422, detail=f"source url hostname could not be resolved: {exc}") from exc
+
+    for entry in address_info:
+        resolved_ip = entry[4][0]
+        ip_obj = ip_address(resolved_ip)
+        if (
+            ip_obj.is_private
+            or ip_obj.is_loopback
+            or ip_obj.is_link_local
+            or ip_obj.is_reserved
+            or ip_obj.is_multicast
+            or ip_obj.is_unspecified
+        ):
+            raise HTTPException(status_code=422, detail="source url resolves to a non-public network")
+
+    return parsed.geturl()
 
 
 def normalize_text(text: str) -> str:
@@ -120,25 +210,13 @@ Source text:
 
 def generate_with_gemini(text: str, title: Optional[str], num_questions: int) -> dict:
     prompt = build_prompt(text, title, num_questions)
-    response = requests.post(
-        GEMINI_API_URL,
-        params={"key": GEMINI_API_KEY},
-        json={
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {
-                "temperature": 0.3,
-                "responseMimeType": "application/json",
-            },
-        },
-        timeout=45,
-    )
-    if response.status_code >= 400:
-        raise HTTPException(
-            status_code=502,
-            detail=f"Gemini request failed: {response.text[:300]}",
-        )
+    response = post_to_gemini(prompt)
 
     payload = response.json()
+    blocked_reason = extract_gemini_block_reason(payload)
+    if blocked_reason:
+        raise HTTPException(status_code=502, detail=blocked_reason)
+
     text_output = extract_gemini_text(payload)
     if not text_output:
         raise HTTPException(status_code=502, detail="Gemini returned no usable content")
@@ -149,6 +227,101 @@ def generate_with_gemini(text: str, title: Optional[str], num_questions: int) ->
         raise HTTPException(status_code=502, detail=f"Gemini returned invalid JSON: {exc}") from exc
 
     return validate_material_payload(parsed, num_questions)
+
+
+def post_to_gemini(prompt: str) -> requests.Response:
+    request_json = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": 0.3,
+            "responseMimeType": "application/json",
+        },
+    }
+
+    last_error: Optional[Exception] = None
+    attempt_count = len(GEMINI_RETRY_DELAYS) + 1
+    for attempt in range(attempt_count):
+        try:
+            response = requests.post(
+                GEMINI_API_URL,
+                params={"key": GEMINI_API_KEY},
+                json=request_json,
+                timeout=45,
+            )
+        except requests.RequestException as exc:
+            last_error = exc
+            if attempt < len(GEMINI_RETRY_DELAYS):
+                time.sleep(GEMINI_RETRY_DELAYS[attempt])
+                continue
+            raise HTTPException(status_code=502, detail=f"Gemini request failed: {exc}") from exc
+
+        if should_retry_gemini_response(response.status_code) and attempt < len(GEMINI_RETRY_DELAYS):
+            time.sleep(GEMINI_RETRY_DELAYS[attempt])
+            continue
+
+        if response.status_code >= 400:
+            raise HTTPException(
+                status_code=502,
+                detail=format_gemini_http_error(response),
+            )
+
+        return response
+
+    raise HTTPException(status_code=502, detail=f"Gemini request failed: {last_error}")
+
+
+def should_retry_gemini_response(status_code: int) -> bool:
+    return status_code == 429 or 500 <= status_code < 600
+
+
+def format_gemini_http_error(response: requests.Response) -> str:
+    raw_text = response.text[:300]
+    try:
+        payload = response.json()
+    except ValueError:
+        return f"Gemini request failed with status {response.status_code}: {raw_text}"
+
+    details: List[str] = []
+    error = payload.get("error") or {}
+    message = str(error.get("message") or "").strip()
+    status = str(error.get("status") or "").strip()
+    if status:
+        details.append(status)
+    if message:
+        details.append(message)
+    if not details and raw_text:
+        details.append(raw_text)
+    joined = ": ".join(details) if details else f"status {response.status_code}"
+    return f"Gemini request failed with status {response.status_code}: {joined}"
+
+
+def extract_gemini_block_reason(payload: dict) -> str:
+    prompt_feedback = payload.get("promptFeedback") or {}
+    block_reason = str(prompt_feedback.get("blockReason") or "").strip()
+    if block_reason:
+        return f"Gemini blocked the prompt: {block_reason}"
+
+    candidates = payload.get("candidates") or []
+    for candidate in candidates:
+        finish_reason = str(candidate.get("finishReason") or "").strip()
+        if finish_reason in {"SAFETY", "BLOCKLIST", "PROHIBITED_CONTENT", "RECITATION", "SPII"}:
+            return f"Gemini stopped generation due to {finish_reason.lower().replace('_', ' ')}"
+
+        safety_ratings = candidate.get("safetyRatings") or []
+        blocked_categories = []
+        for rating in safety_ratings:
+            if not isinstance(rating, dict):
+                continue
+            probability = str(rating.get("probability") or "").strip().upper()
+            blocked = rating.get("blocked")
+            if blocked or probability in {"HIGH", "MEDIUM", "MEDIUM_AND_ABOVE"}:
+                category = str(rating.get("category") or "UNKNOWN").strip()
+                blocked_categories.append(category)
+        if blocked_categories:
+            categories = ", ".join(blocked_categories[:3])
+            return f"Gemini safety filters blocked or flagged the response: {categories}"
+
+    return ""
 
 
 def extract_gemini_text(payload: dict) -> str:
