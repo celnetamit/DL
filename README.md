@@ -47,6 +47,27 @@ cp .env.example .env
 npm run dev
 ```
 
+## Testing
+
+Run the main test suites locally with:
+
+```bash
+cd backend-go
+go test ./...
+
+cd ../frontend
+npx tsc --noEmit
+npm test
+npx playwright test
+```
+
+Coverage currently includes:
+- Go handler and middleware tests for auth, payments, analytics, AI, and institution/admin flows
+- Vitest component and client-flow coverage for auth, pricing, admin access, and user management
+- Playwright browser smoke coverage for auth entry points, pricing redirects and checkout success, admin role access, AI logs, and institution error states
+
+GitHub Actions now runs these suites automatically on pushes to `main` and on pull requests.
+
 ## Notes
 
 - Razorpay webhooks are verified using `RAZORPAY_WEBHOOK_SECRET`.
