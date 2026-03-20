@@ -9,6 +9,7 @@ import SubscriptionAdminPanel from "@/components/SubscriptionAdminPanel";
 import DomainManagementPanel from "@/components/DomainManagementPanel";
 import ProductManagerPanel from "@/components/ProductManagerPanel";
 import SettingsPanel from "@/components/SettingsPanel";
+import AIGenerationPanel from "@/components/AIGenerationPanel";
 import { useAuth } from "@/lib/auth";
 import {
   ROLE_CONTENT_MANAGER,
@@ -18,11 +19,12 @@ import {
 } from "@/lib/roles";
 import { useEffect, useMemo, useState } from "react";
 
-const TABS = ["Analytics", "Users", "Institutions", "Subscriptions", "Domains", "Products", "Settings"] as const;
+const TABS = ["Analytics", "AI Logs", "Users", "Institutions", "Subscriptions", "Domains", "Products", "Settings"] as const;
 type Tab = typeof TABS[number];
 
 const TAB_RULES: Record<Tab, string[]> = {
   Analytics: [ROLE_SUPER_ADMIN, ROLE_SUBSCRIPTION_MANAGER, ROLE_CONTENT_MANAGER],
+  "AI Logs": [ROLE_SUPER_ADMIN, ROLE_SUBSCRIPTION_MANAGER, ROLE_CONTENT_MANAGER],
   Users: [ROLE_SUPER_ADMIN, ROLE_SUBSCRIPTION_MANAGER],
   Institutions: [ROLE_SUPER_ADMIN, ROLE_SUBSCRIPTION_MANAGER],
   Subscriptions: [ROLE_SUPER_ADMIN, ROLE_SUBSCRIPTION_MANAGER],
@@ -92,6 +94,7 @@ export default function AdminPage() {
 
         {/* Tab Content */}
         {activeTab === "Analytics" && <AdminDashboard />}
+        {activeTab === "AI Logs" && <AIGenerationPanel token={token} />}
         {activeTab === "Users" && <UserManagementPanel token={token} />}
         {activeTab === "Institutions" && <InstitutionPanel token={token} />}
         {activeTab === "Subscriptions" && <SubscriptionAdminPanel token={token} />}

@@ -162,6 +162,7 @@ func main() {
 			protected.PUT("/subscriptions/:id/cancel", handler.CancelSubscription)
 
 			protected.GET("/analytics", middleware.RequireRole(authz.RoleSuperAdmin, authz.RoleSubscriptionManager, authz.RoleContentManager), handler.GetAdminAnalytics)
+			protected.GET("/ai/logs", middleware.RequireRole(authz.RoleSuperAdmin, authz.RoleSubscriptionManager, authz.RoleContentManager), handler.ListAIGenerationLogs)
 			protected.POST("/courses", middleware.RequireRole(authz.RoleInstructor, authz.RoleContentManager, authz.RoleSuperAdmin), handler.CreateCourse)
 			protected.PUT("/courses/:course_id", middleware.RequireRole(authz.RoleInstructor, authz.RoleContentManager, authz.RoleSuperAdmin), handler.UpdateCourse)
 			protected.DELETE("/courses/:course_id", middleware.RequireRole(authz.RoleInstructor, authz.RoleContentManager, authz.RoleSuperAdmin), handler.DeleteCourse)

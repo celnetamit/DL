@@ -310,6 +310,19 @@ export async function getAdminAnalytics(token: string, months = 6) {
   return apiFetch<any>(`/api/v1/analytics?months=${months}`, {}, token);
 }
 
+export async function getAIGenerationLogs(
+  token: string,
+  params: { status?: string; provider?: string; model?: string; limit?: number } = {},
+) {
+  const query = new URLSearchParams();
+  if (params.status) query.set("status", params.status);
+  if (params.provider) query.set("provider", params.provider);
+  if (params.model) query.set("model", params.model);
+  if (params.limit) query.set("limit", String(params.limit));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return apiFetch<any[]>(`/api/v1/ai/logs${suffix}`, { cache: "no-store" }, token);
+}
+
 export async function getInstitutionOverview(institutionId: string, token: string) {
   return apiFetch<any>(`/api/v1/institutions/${institutionId}/overview`, { cache: "no-store" }, token);
 }

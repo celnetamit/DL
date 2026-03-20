@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 import os
 import re
-from typing import List, Optional
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
 import requests
 from bs4 import BeautifulSoup
@@ -38,6 +39,8 @@ class MaterialResponse(BaseModel):
     flashcards: List[Flashcard]
     provider: str = Field(default="gemini")
     model: str = Field(default=GEMINI_MODEL)
+    prompt_version: str = Field(default="v2")
+    generated_at: str
 
 
 @app.get("/health")
@@ -145,9 +148,7 @@ def generate_with_gemini(text: str, title: Optional[str], num_questions: int) ->
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=502, detail=f"Gemini returned invalid JSON: {exc}") from exc
 
-    parsed["provider"] = "gemini"
-    parsed["model"] = GEMINI_MODEL
-    return parsed
+    return validate_material_payload(parsed, num_questions)
 
 
 def extract_gemini_text(payload: dict) -> str:
@@ -168,3 +169,81 @@ def strip_json_fence(text: str) -> str:
         cleaned = re.sub(r"^```(?:json)?", "", cleaned).strip()
         cleaned = re.sub(r"```$", "", cleaned).strip()
     return cleaned
+
+
+def validate_material_payload(payload: Dict[str, Any], num_questions: int) -> dict:
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=502, detail="Gemini returned an unexpected response shape")
+
+    title = str(payload.get("title") or "").strip()
+    summary = str(payload.get("summary") or "").strip()
+    if not title:
+        title = "AI Generated Lesson"
+    if not summary:
+        raise HTTPException(status_code=502, detail="Gemini returned no usable summary")
+
+    key_points_raw = payload.get("key_points")
+    if not isinstance(key_points_raw, list):
+        key_points_raw = []
+    key_points = [str(item).strip() for item in key_points_raw if str(item).strip()]
+    if len(key_points) < 3:
+        key_points = split_summary_into_key_points(summary)
+    if len(key_points) < 3:
+        raise HTTPException(status_code=502, detail="Gemini returned too few key points")
+    key_points = key_points[:6]
+
+    flashcards_raw = payload.get("flashcards")
+    if not isinstance(flashcards_raw, list):
+        flashcards_raw = []
+    flashcards = normalize_flashcards(flashcards_raw)
+    target_flashcards = max(3, min(num_questions, 8))
+    if len(flashcards) < 2:
+        flashcards = build_fallback_flashcards(title, key_points, summary, target_flashcards)
+    if len(flashcards) < 2:
+        raise HTTPException(status_code=502, detail="Gemini returned too few usable flashcards")
+    flashcards = flashcards[:target_flashcards]
+
+    return {
+        "title": title,
+        "summary": summary,
+        "key_points": key_points,
+        "flashcards": flashcards,
+        "provider": "gemini",
+        "model": GEMINI_MODEL,
+        "prompt_version": "v2",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def split_summary_into_key_points(summary: str) -> List[str]:
+    parts = re.split(r"(?<=[.!?])\s+", summary)
+    normalized = [part.strip(" -") for part in parts if part.strip()]
+    return normalized[:4]
+
+
+def normalize_flashcards(flashcards_raw: List[Any]) -> List[Dict[str, str]]:
+    normalized: List[Dict[str, str]] = []
+    for item in flashcards_raw:
+        if not isinstance(item, dict):
+            continue
+        term = str(item.get("term") or "").strip()
+        definition = str(item.get("definition") or "").strip()
+        if term and definition:
+            normalized.append({"term": term, "definition": definition})
+    return normalized
+
+
+def build_fallback_flashcards(title: str, key_points: List[str], summary: str, count: int) -> List[Dict[str, str]]:
+    fallback: List[Dict[str, str]] = []
+    fallback.append({"term": title, "definition": summary[:240].strip()})
+    for idx, point in enumerate(key_points[: max(1, count - 1)], start=1):
+        fallback.append({"term": f"Key Point {idx}", "definition": point})
+    seen = set()
+    unique_cards: List[Dict[str, str]] = []
+    for card in fallback:
+        signature = (card["term"], card["definition"])
+        if signature in seen:
+            continue
+        seen.add(signature)
+        unique_cards.append(card)
+    return unique_cards[:count]
