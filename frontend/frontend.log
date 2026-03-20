@@ -1,24 +1,191 @@
-nohup: ignoring input
 
 > lms-frontend@1.0.0 dev
-> next dev
+> next dev --port 3000
 
- ⨯ Failed to start server
-Error: listen EADDRINUSE: address already in use :::8080
-    at Server.setupListenHandle [as _listen2] (node:net:1817:16)
-    at listenInCluster (node:net:1865:12)
-    at Server.listen (node:net:1953:7)
-    at /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/lib/start-server.js:280:16
-    at new Promise (<anonymous>)
-    at startServer (/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/lib/start-server.js:191:11)
-    at /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/lib/start-server.js:310:52
-    at Span.traceAsyncFn (/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/trace/trace.js:154:26)
-    at process.<anonymous> (/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/lib/start-server.js:310:35)
-    at process.emit (node:events:517:28) {
-  code: 'EADDRINUSE',
-  errno: -98,
-  syscall: 'listen',
-  address: '::',
-  port: 8080
+  ▲ Next.js 14.2.4
+  - Local:        http://localhost:3000
+  - Environments: .env
+
+ ✓ Starting...
+ ✓ Ready in 2.4s
+ ○ Compiling / ...
+ ✓ Compiled / in 3.7s (563 modules)
+ GET / 200 in 3901ms
+ GET / 200 in 34ms
+ ○ Compiling /product/[id] ...
+ ✓ Compiled /product/[id] in 559ms (553 modules)
+ ○ Compiling /pricing ...
+ ✓ Compiled /pricing in 582ms (554 modules)
+ ✓ Compiled in 515ms (288 modules)
+ ✓ Compiled in 339ms (288 modules)
+ ⚠ Fast Refresh had to perform a full reload. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+ ✓ Compiled in 632ms (568 modules)
+ GET /pricing 200 in 355ms
+ ✓ Compiled in 364ms (288 modules)
+ ✓ Compiled in 260ms (288 modules)
+ ✓ Compiled in 439ms (288 modules)
+ ✓ Compiled /_not-found in 301ms (557 modules)
+ GET /_next/static/css/app/layout.css?v=1773923276625 404 in 429ms
+ ⨯ Error: Cannot find module './616.js'
+Require stack:
+- /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server/webpack-runtime.js
+- /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server/app/_not-found/page.js
+- /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/require.js
+- /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/load-components.js
+- /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/build/utils.js
+- /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/dev/hot-middleware.js
+- /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/dev/hot-reloader-webpack.js
+- /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/lib/router-utils/setup-dev-bundler.js
+- /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/lib/router-server.js
+- /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/lib/start-server.js
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1140:15)
+    at /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/require-hook.js:55:36
+    at Module._load (node:internal/modules/cjs/loader:981:27)
+    at Module.require (node:internal/modules/cjs/loader:1231:19)
+    at mod.require (/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/require-hook.js:65:28)
+    at require (node:internal/modules/helpers:177:18)
+    at __webpack_require__.f.require (/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server/webpack-runtime.js:198:28)
+    at /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server/webpack-runtime.js:111:40
+    at Array.reduce (<anonymous>)
+    at __webpack_require__.e (/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server/webpack-runtime.js:110:67)
+    at Array.map (<anonymous>)
+    at __webpack_require__.X (/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server/webpack-runtime.js:162:22)
+    at /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server/app/pricing/page.js:1:12486
+    at Object.<anonymous> (/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server/app/pricing/page.js:1:12531)
+    at Module._compile (node:internal/modules/cjs/loader:1364:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1422:10)
+    at Module.load (node:internal/modules/cjs/loader:1203:32)
+    at Module._load (node:internal/modules/cjs/loader:1019:12)
+    at Module.require (node:internal/modules/cjs/loader:1231:19)
+    at mod.require (/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/require-hook.js:65:28)
+    at require (node:internal/modules/helpers:177:18)
+    at requirePage (/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/require.js:109:84)
+    at /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/load-components.js:98:84
+    at async loadComponentsImpl (/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/load-components.js:98:26)
+    at async DevServer.findPageComponentsImpl (/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/next-server.js:710:36)
+    at async DevServer.findPageComponents (/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/dev/next-dev-server.js:577:20)
+    at async DevServer.renderPageComponent (/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/base-server.js:1917:24)
+    at async DevServer.renderToResponseImpl (/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/base-server.js:1969:32)
+    at async DevServer.pipeImpl (/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/base-server.js:920:25)
+    at async NextNodeServer.handleCatchallRenderRequest (/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/next-server.js:272:17)
+    at async DevServer.handleRequestImpl (/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/base-server.js:816:17)
+    at async /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/dev/next-dev-server.js:339:20
+    at async Span.traceAsyncFn (/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/trace/trace.js:154:20)
+    at async DevServer.handleRequest (/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/dev/next-dev-server.js:336:24)
+    at async invokeRender (/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/lib/router-server.js:174:21)
+    at async handleRequest (/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/lib/router-server.js:353:24)
+    at async requestHandlerImpl (/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/lib/router-server.js:377:13)
+    at async Server.requestListener (/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/lib/start-server.js:141:13) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server/webpack-runtime.js',
+    '/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server/app/_not-found/page.js',
+    '/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/require.js',
+    '/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/load-components.js',
+    '/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/build/utils.js',
+    '/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/dev/hot-middleware.js',
+    '/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/dev/hot-reloader-webpack.js',
+    '/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/lib/router-utils/setup-dev-bundler.js',
+    '/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/lib/router-server.js',
+    '/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/lib/start-server.js'
+  ],
+  page: '/pricing'
 }
-[?25h
+ ○ Compiling /_error ...
+ ✓ Compiled /_error in 1482ms (778 modules)
+ GET /pricing 500 in 1760ms
+ ✓ Compiled /_not-found in 106ms (781 modules)
+ GET /_next/static/css/app/layout.css?v=1773923921563 404 in 280ms
+ GET / 200 in 92ms
+ GET /_next/static/css/app/layout.css?v=1773923925884 404 in 65ms
+ GET /_next/static/chunks/main-app.js?v=1773923925884 404 in 141ms
+ GET /_next/static/chunks/app-pages-internals.js 404 in 64ms
+ GET /_next/static/chunks/app/page.js 404 in 59ms
+ GET /_next/static/chunks/app/layout.js 404 in 16ms
+ GET /product/84e67685-296e-454a-ba3f-79c9b1b08a9b 200 in 39ms
+ GET /_next/static/css/app/layout.css?v=1773923930620 404 in 55ms
+ GET /_next/static/chunks/main-app.js?v=1773923930620 404 in 61ms
+ GET /_next/static/chunks/app-pages-internals.js 404 in 60ms
+ GET /_next/static/chunks/app/layout.js 404 in 59ms
+ GET /_next/static/chunks/app/product/%5Bid%5D/page.js 404 in 60ms
+ ⨯ Failed to generate static paths for /product/[id]:
+Error: Cannot find module './vendor-chunks/lucide-react.js'
+Require stack:
+- /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server/webpack-runtime.js
+- /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server/app/product/[id]/page.js
+- /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/require.js
+- /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/load-components.js
+- /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/build/utils.js
+- /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/dev/static-paths-worker.js
+- /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/compiled/jest-worker/processChild.js
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1140:15)
+    at /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/require-hook.js:55:36
+    at Module._load (node:internal/modules/cjs/loader:981:27)
+    at Module.require (node:internal/modules/cjs/loader:1231:19)
+    at mod.require (/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/require-hook.js:65:28)
+    at require (node:internal/modules/helpers:177:18)
+    at __webpack_require__.f.require (/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server/webpack-runtime.js:198:28)
+    at /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server/webpack-runtime.js:111:40
+    at Array.reduce (<anonymous>)
+    at __webpack_require__.e (/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server/webpack-runtime.js:110:67) {
+  type: 'Error',
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server/webpack-runtime.js',
+    '/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server/app/product/[id]/page.js',
+    '/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/require.js',
+    '/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/load-components.js',
+    '/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/build/utils.js',
+    '/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/dev/static-paths-worker.js',
+    '/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/compiled/jest-worker/processChild.js'
+  ]
+}
+<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: ENOENT: no such file or directory, lstat '/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server/vendor-chunks/lucide-react.js'
+<w> [webpack.cache.PackFileCacheStrategy/webpack.FileSystemInfo] Resolving './vendor-chunks/lucide-react' in /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server for build dependencies doesn't lead to expected result '/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server/vendor-chunks/lucide-react.js', but to 'Error: Can't resolve './vendor-chunks/lucide-react' in '/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server'' instead. Resolving dependencies are ignored for this path.
+<w>  at resolve commonjs file ./vendor-chunks/lucide-react (expected /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server/vendor-chunks/lucide-react.js)
+<w>  at file dependencies /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server/webpack-runtime.js
+<w>  at file /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server/webpack-runtime.js
+<w>  at file dependencies /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server/app/page.js
+<w>  at file /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server/app/page.js
+<w>  at file dependencies /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/require.js
+<w>  at file /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/require.js
+<w>  at file dependencies /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/load-components.js
+<w>  at file /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/load-components.js
+<w>  at file dependencies /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/build/utils.js
+<w>  at file /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/build/utils.js
+<w>  at file dependencies /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/build/webpack/loaders/next-route-loader/index.js
+<w>  at file /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/build/webpack/loaders/next-route-loader/index.js
+<w>  at resolve commonjs /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/build/webpack/loaders/next-route-loader/index.js
+ ⨯ Error: Cannot find module './vendor-chunks/lucide-react.js'
+Require stack:
+- /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server/webpack-runtime.js
+- /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server/app/product/[id]/page.js
+- /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/require.js
+- /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/load-components.js
+- /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/build/utils.js
+- /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/dev/static-paths-worker.js
+- /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/compiled/jest-worker/processChild.js
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1140:15)
+    at /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/require-hook.js:55:36
+    at Module._load (node:internal/modules/cjs/loader:981:27)
+    at Module.require (node:internal/modules/cjs/loader:1231:19)
+    at mod.require (/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/require-hook.js:65:28)
+    at require (node:internal/modules/helpers:177:18)
+    at __webpack_require__.f.require (/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server/webpack-runtime.js:198:28)
+    at /home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server/webpack-runtime.js:111:40
+    at Array.reduce (<anonymous>)
+    at __webpack_require__.e (/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server/webpack-runtime.js:110:67) {
+  type: 'Error',
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server/webpack-runtime.js',
+    '/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/.next/server/app/product/[id]/page.js',
+    '/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/require.js',
+    '/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/load-components.js',
+    '/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/build/utils.js',
+    '/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/server/dev/static-paths-worker.js',
+    '/home/itb04/Desktop/digital_lib/dl2 by amit/frontend/node_modules/next/dist/compiled/jest-worker/processChild.js'
+  ],
+  page: '/product/84e67685-296e-454a-ba3f-79c9b1b08a9b'
+}
+ GET /product/84e67685-296e-454a-ba3f-79c9b1b08a9b 500 in 483ms

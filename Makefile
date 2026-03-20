@@ -3,6 +3,8 @@
 #  Requires: go, npm, python3 + uvicorn already available in PATH
 # ──────────────────────────────────────────────────────────────────────────────
 
+SHELL := /bin/bash
+
 .PHONY: dev test build clean
 
 ## Start all three services concurrently (requires GNU make 4.x)
