@@ -22,6 +22,21 @@ type Subscription = {
 type User = { id: string; email: string; full_name: string };
 type Product = { id: string; name: string; tier: string; price: number };
 type Institution = { id: string; name: string; code?: string; student_limit?: number };
+type Payment = {
+  id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  plan_code: string;
+  description?: string;
+  user_email?: string;
+  user_name?: string;
+  product_name?: string;
+  institution_name?: string;
+  razorpay_payment_id?: string;
+  razorpay_order_id?: string;
+  created_at: string;
+};
 
 const STATUS_COLORS: Record<string, string> = {
   active:    "bg-green-500/20 text-green-400 border-green-500/30",
@@ -43,6 +58,7 @@ const EMPTY_FORM = {
 
 export default function SubscriptionAdminPanel({ token }: { token: string | null }) {
   const [subs, setSubs] = useState<Subscription[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [institutions, setInstitutions] = useState<Institution[]>([]);
@@ -78,6 +94,16 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
     }
   }, [token]);
 
+  const fetchPayments = useCallback(async () => {
+    if (!token) return;
+    try {
+      const data = await apiFetch<Payment[]>("/api/v1/payments/all", {}, token);
+      setPayments(data || []);
+    } catch {
+      // silent
+    }
+  }, [token]);
+
   const fetchProducts = useCallback(async () => {
     try {
       const data = await apiFetch<Product[]>("/api/v1/products", {});
@@ -95,7 +121,7 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
     }
   }, [token]);
 
-  useEffect(() => { fetchSubs(); fetchUsers(); fetchProducts(); fetchInstitutions(); }, [fetchSubs, fetchUsers, fetchProducts, fetchInstitutions]);
+  useEffect(() => { fetchSubs(); fetchUsers(); fetchProducts(); fetchInstitutions(); fetchPayments(); }, [fetchSubs, fetchUsers, fetchProducts, fetchInstitutions, fetchPayments]);
 
   const openCreate = () => {
     setEditingId(null);
@@ -137,6 +163,7 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
       setShowForm(false);
       setEditingId(null);
       fetchSubs();
+      fetchPayments();
     } catch { alert("Failed to save subscription"); }
     finally { setSaving(false); }
   };
@@ -145,6 +172,7 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
     if (!token || !confirm("Permanently delete this subscription?")) return;
     await apiFetch(`/api/v1/admin/subscriptions/${id}`, { method: "DELETE" }, token);
     fetchSubs();
+    fetchPayments();
     if (selectedSub?.id === id) setSelectedSub(null);
   };
 
@@ -152,6 +180,7 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
     if (!token || !confirm(`Cancel subscription for ${sub.user_email || sub.user_id}?`)) return;
     await apiFetch(`/api/v1/subscriptions/${sub.id}/cancel`, { method: "PUT" }, token);
     fetchSubs();
+    fetchPayments();
     setSelectedSub(null);
   };
 
@@ -173,6 +202,8 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
   const activeCount = subs.filter((sub) => sub.status === "active").length;
   const institutionManagedCount = subs.filter((sub) => sub.institution_id).length;
   const linkedProductCount = subs.filter((sub) => sub.product_id).length;
+  const capturedPayments = payments.filter((payment) => payment.status === "captured");
+  const capturedRevenue = capturedPayments.reduce((sum, payment) => sum + payment.amount, 0) / 100;
 
   return (
     <div className="space-y-6 min-w-0">
@@ -188,6 +219,11 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
         <div className="glass rounded-2xl p-6 border border-dune/10">
           <p className="text-[10px] uppercase tracking-widest text-dune/55">Linked Products</p>
           <p className="mt-4 text-4xl font-[var(--font-space)] text-ember">{linkedProductCount}</p>
+        </div>
+        <div className="glass rounded-2xl p-6 border border-dune/10 md:col-span-3">
+          <p className="text-[10px] uppercase tracking-widest text-dune/55">Captured Billing</p>
+          <p className="mt-4 text-4xl font-[var(--font-space)] text-ember">Rs. {capturedRevenue.toFixed(0)}</p>
+          <p className="mt-2 text-sm text-dune/55">{capturedPayments.length} successful payment records</p>
         </div>
       </section>
 
@@ -503,6 +539,55 @@ export default function SubscriptionAdminPanel({ token }: { token: string | null
             <button onClick={openCreate} className="mt-3 rounded-full bg-ember/10 text-ember px-4 py-1.5 text-xs font-semibold hover:bg-ember/20">
               + Create New
             </button>
+          </div>
+        )}
+      </div>
+
+      <div className="glass rounded-2xl p-6 min-w-0">
+        <div className="flex items-center justify-between gap-3 mb-5">
+          <div>
+            <h3 className="font-[var(--font-space)] text-xl">Payments & Purchases</h3>
+            <p className="text-xs text-dune/50 mt-0.5">Live payment records captured from checkout orders and webhooks.</p>
+          </div>
+          <span className="text-xs text-dune/50">{payments.length} payment events</span>
+        </div>
+
+        {payments.length === 0 ? (
+          <p className="text-sm text-dune/50 py-6">No payment records found yet.</p>
+        ) : (
+          <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
+            {payments.map((payment) => (
+              <div key={payment.id} className="rounded-xl border border-dune/15 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm truncate">
+                      {payment.product_name || payment.description || payment.plan_code || "Purchase"}
+                    </p>
+                    <p className="text-xs text-dune/50 truncate mt-1">
+                      {payment.user_name || payment.user_email || "Unknown user"}
+                      {payment.institution_name ? ` - ${payment.institution_name}` : ""}
+                    </p>
+                    <p className="text-[10px] font-mono text-dune/35 mt-1">
+                      Order: {payment.razorpay_order_id || "-"}
+                    </p>
+                    {payment.razorpay_payment_id && (
+                      <p className="text-[10px] font-mono text-dune/35">
+                        Payment: {payment.razorpay_payment_id}
+                      </p>
+                    )}
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className={`inline-block text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-widest border ${STATUS_COLORS[payment.status] || STATUS_COLORS.halted}`}>
+                      {payment.status}
+                    </span>
+                    <p className="mt-2 font-semibold text-ember">
+                      Rs. {(payment.amount / 100).toFixed(0)}
+                    </p>
+                    <p className="text-[10px] text-dune/35 mt-1">{new Date(payment.created_at).toLocaleDateString()}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>

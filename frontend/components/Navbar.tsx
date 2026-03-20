@@ -81,7 +81,7 @@ export default function Navbar() {
             </div>
           ) : (
             <Link
-              href="/pricing"
+              href="/dashboard?auth=login"
               className="rounded-full bg-ember px-8 py-3 text-xs font-bold uppercase tracking-widest text-midnight transition-all hover:scale-105 hover:bg-white active:scale-95 shadow-lg shadow-ember/20"
             >
               Sign In
@@ -143,7 +143,7 @@ export default function Navbar() {
             </div>
           ) : (
             <Link
-              href="/pricing"
+              href="/dashboard?auth=register"
               className="w-full rounded-full bg-ember px-12 py-4 text-center text-sm font-bold uppercase tracking-widest text-midnight transition-transform hover:scale-105 shadow-xl shadow-ember/30"
             >
               Get Started

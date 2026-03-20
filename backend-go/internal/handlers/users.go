@@ -1,140 +1,214 @@
 package handlers
 
 import (
-  "net/http"
+	"net/http"
 
-  "lms-backend/internal/models"
-  "lms-backend/internal/utils"
+	"lms-backend/internal/authz"
+	"lms-backend/internal/models"
+	"lms-backend/internal/utils"
 
-  "github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type updateProfileRequest struct {
-  FullName string `json:"full_name" binding:"required"`
+	FullName string `json:"full_name" binding:"required"`
 }
 
 func (h *Handler) GetMe(c *gin.Context) {
-  userID, _ := c.Get("user_id")
+	userID, _ := c.Get("user_id")
 
-  var user models.User
-  if err := h.DB.Preload("Roles").First(&user, "id = ?", userID).Error; err != nil {
-    utils.JSON(c, http.StatusNotFound, "user not found", nil)
-    return
-  }
+	var user models.User
+	if err := h.DB.Preload("Roles").First(&user, "id = ?", userID).Error; err != nil {
+		utils.JSON(c, http.StatusNotFound, "user not found", nil)
+		return
+	}
 
-  utils.JSON(c, http.StatusOK, "profile", user)
+	utils.JSON(c, http.StatusOK, "profile", user)
 }
 
 func (h *Handler) UpdateMe(c *gin.Context) {
-  userID, _ := c.Get("user_id")
+	userID, _ := c.Get("user_id")
 
-  var req updateProfileRequest
-  if err := c.ShouldBindJSON(&req); err != nil {
-    utils.JSON(c, http.StatusBadRequest, "invalid request", gin.H{"error": err.Error()})
-    return
-  }
+	var req updateProfileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.JSON(c, http.StatusBadRequest, "invalid request", gin.H{"error": err.Error()})
+		return
+	}
 
-  if err := h.DB.Model(&models.User{}).Where("id = ?", userID).Update("full_name", req.FullName).Error; err != nil {
-    utils.JSON(c, http.StatusInternalServerError, "failed to update profile", nil)
-    return
-  }
+	if err := h.DB.Model(&models.User{}).Where("id = ?", userID).Update("full_name", req.FullName).Error; err != nil {
+		utils.JSON(c, http.StatusInternalServerError, "failed to update profile", nil)
+		return
+	}
 
-  utils.JSON(c, http.StatusOK, "profile updated", gin.H{"full_name": req.FullName})
+	utils.JSON(c, http.StatusOK, "profile updated", gin.H{"full_name": req.FullName})
 
-  // Audit Log
-  uIDStr := userID.(string)
-  h.LogActivity(c, &uIDStr, "UPDATE_PROFILE", "USER", uIDStr, "User updated their own profile")
+	// Audit Log
+	uIDStr := userID.(string)
+	h.LogActivity(c, &uIDStr, "UPDATE_PROFILE", "USER", uIDStr, "User updated their own profile")
+}
+
+// POST /admin/users
+func (h *Handler) AdminCreateUser(c *gin.Context) {
+	var req struct {
+		Email         string `json:"email" binding:"required,email"`
+		Password      string `json:"password" binding:"required,min=6"`
+		FullName      string `json:"full_name" binding:"required"`
+		Role          string `json:"role"`
+		Status        string `json:"status"`
+		InstitutionID string `json:"institution_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.JSON(c, http.StatusBadRequest, "invalid request", gin.H{"error": err.Error()})
+		return
+	}
+
+	var existing models.User
+	if err := h.DB.Where("email = ?", req.Email).First(&existing).Error; err == nil {
+		utils.JSON(c, http.StatusConflict, "email already registered", nil)
+		return
+	}
+
+	roleName := req.Role
+	if roleName == "" {
+		roleName = authz.RoleStudent
+	}
+
+	var role models.Role
+	if err := h.DB.Where("name = ?", roleName).First(&role).Error; err != nil {
+		utils.JSON(c, http.StatusBadRequest, "invalid role", nil)
+		return
+	}
+
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		utils.JSON(c, http.StatusInternalServerError, "failed to secure password", nil)
+		return
+	}
+	passwordHashStr := string(passwordHash)
+
+	status := req.Status
+	if status == "" {
+		status = "active"
+	}
+
+	user := models.User{
+		Email:        req.Email,
+		PasswordHash: &passwordHashStr,
+		FullName:     req.FullName,
+		Status:       status,
+	}
+	if req.InstitutionID != "" {
+		user.InstitutionID = &req.InstitutionID
+	}
+
+	if err := h.DB.Create(&user).Error; err != nil {
+		utils.JSON(c, http.StatusInternalServerError, "failed to create user", nil)
+		return
+	}
+	if err := h.DB.Model(&user).Association("Roles").Append(&role); err != nil {
+		utils.JSON(c, http.StatusInternalServerError, "failed to assign role", nil)
+		return
+	}
+
+	h.DB.Preload("Roles").Preload("Institution").First(&user, "id = ?", user.ID)
+	utils.JSON(c, http.StatusCreated, "user created", user)
+
+	adminID, _ := c.Get("user_id")
+	if adminID != nil {
+		adminIDStr := adminID.(string)
+		h.LogActivity(c, &adminIDStr, "CREATE_USER", "USER", user.ID, "Admin created user "+user.Email)
+	}
 }
 
 // ── Admin: User Management ────────────────────────────────────────────────────
 
 // GET /users?role=student&status=active&institution_id=<uuid>
 func (h *Handler) ListUsers(c *gin.Context) {
-  role           := c.Query("role")
-  status         := c.Query("status")
-  institutionID  := c.Query("institution_id")
+	role := c.Query("role")
+	status := c.Query("status")
+	institutionID := c.Query("institution_id")
 
-  query := h.DB.Preload("Roles").Preload("Institution")
+	query := h.DB.Preload("Roles").Preload("Institution")
 
-  if role != "" {
-    query = query.Joins("JOIN user_roles ur ON ur.user_id = users.id JOIN roles r ON r.id = ur.role_id").
-      Where("r.name = ?", role)
-  }
-  if status != "" {
-    query = query.Where("status = ?", status)
-  }
-  if institutionID != "" {
-    query = query.Where("institution_id = ?", institutionID)
-  }
+	if role != "" {
+		query = query.Joins("JOIN user_roles ur ON ur.user_id = users.id JOIN roles r ON r.id = ur.role_id").
+			Where("r.name = ?", role)
+	}
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+	if institutionID != "" {
+		query = query.Where("institution_id = ?", institutionID)
+	}
 
-  var users []models.User
-  if err := query.Find(&users).Error; err != nil {
-    utils.JSON(c, http.StatusInternalServerError, "failed to list users", nil)
-    return
-  }
-  utils.JSON(c, http.StatusOK, "users", users)
+	var users []models.User
+	if err := query.Find(&users).Error; err != nil {
+		utils.JSON(c, http.StatusInternalServerError, "failed to list users", nil)
+		return
+	}
+	utils.JSON(c, http.StatusOK, "users", users)
 }
 
 // PUT /users/:id/role    body: {"role":"instructor"}
 func (h *Handler) UpdateUserRole(c *gin.Context) {
-  userID := c.Param("id")
+	userID := c.Param("id")
 
-  var req struct {
-    Role string `json:"role" binding:"required"`
-  }
-  if err := c.ShouldBindJSON(&req); err != nil {
-    utils.JSON(c, http.StatusBadRequest, "invalid request", gin.H{"error": err.Error()})
-    return
-  }
+	var req struct {
+		Role string `json:"role" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.JSON(c, http.StatusBadRequest, "invalid request", gin.H{"error": err.Error()})
+		return
+	}
 
-  var user models.User
-  if err := h.DB.Preload("Roles").First(&user, "id = ?", userID).Error; err != nil {
-    utils.JSON(c, http.StatusNotFound, "user not found", nil)
-    return
-  }
+	var user models.User
+	if err := h.DB.Preload("Roles").First(&user, "id = ?", userID).Error; err != nil {
+		utils.JSON(c, http.StatusNotFound, "user not found", nil)
+		return
+	}
 
-  var role models.Role
-  if err := h.DB.Where("name = ?", req.Role).First(&role).Error; err != nil {
-    utils.JSON(c, http.StatusBadRequest, "invalid role", nil)
-    return
-  }
+	var role models.Role
+	if err := h.DB.Where("name = ?", req.Role).First(&role).Error; err != nil {
+		utils.JSON(c, http.StatusBadRequest, "invalid role", nil)
+		return
+	}
 
-  // Replace all roles with the single new one
-  h.DB.Model(&user).Association("Roles").Replace(&role)
-  utils.JSON(c, http.StatusOK, "role updated", gin.H{"user_id": userID, "role": req.Role})
+	// Replace all roles with the single new one
+	h.DB.Model(&user).Association("Roles").Replace(&role)
+	utils.JSON(c, http.StatusOK, "role updated", gin.H{"user_id": userID, "role": req.Role})
 
-  // Audit Log
-  adminID, _ := c.Get("user_id")
-  if adminID != nil {
-    adminIDStr := adminID.(string)
-    h.LogActivity(c, &adminIDStr, "UPDATE_USER_ROLE", "USER", userID, "Admin updated user role to "+req.Role)
-  }
+	// Audit Log
+	adminID, _ := c.Get("user_id")
+	if adminID != nil {
+		adminIDStr := adminID.(string)
+		h.LogActivity(c, &adminIDStr, "UPDATE_USER_ROLE", "USER", userID, "Admin updated user role to "+req.Role)
+	}
 }
 
 // PUT /users/:id/status  body: {"status":"active"} or {"status":"inactive"}
 func (h *Handler) UpdateUserStatus(c *gin.Context) {
-  userID := c.Param("id")
+	userID := c.Param("id")
 
-  var req struct {
-    Status string `json:"status" binding:"required,oneof=active inactive"`
-  }
-  if err := c.ShouldBindJSON(&req); err != nil {
-    utils.JSON(c, http.StatusBadRequest, "invalid request", gin.H{"error": err.Error()})
-    return
-  }
+	var req struct {
+		Status string `json:"status" binding:"required,oneof=active inactive"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.JSON(c, http.StatusBadRequest, "invalid request", gin.H{"error": err.Error()})
+		return
+	}
 
-  if err := h.DB.Model(&models.User{}).Where("id = ?", userID).Update("status", req.Status).Error; err != nil {
-    utils.JSON(c, http.StatusInternalServerError, "failed to update status", nil)
-    return
-  }
+	if err := h.DB.Model(&models.User{}).Where("id = ?", userID).Update("status", req.Status).Error; err != nil {
+		utils.JSON(c, http.StatusInternalServerError, "failed to update status", nil)
+		return
+	}
 
-  utils.JSON(c, http.StatusOK, "status updated", gin.H{"user_id": userID, "status": req.Status})
+	utils.JSON(c, http.StatusOK, "status updated", gin.H{"user_id": userID, "status": req.Status})
 
-  // Audit Log
-  adminID, _ := c.Get("user_id")
-  if adminID != nil {
-    adminIDStr := adminID.(string)
-    h.LogActivity(c, &adminIDStr, "UPDATE_USER_STATUS", "USER", userID, "Admin updated user status to "+req.Status)
-  }
+	// Audit Log
+	adminID, _ := c.Get("user_id")
+	if adminID != nil {
+		adminIDStr := adminID.(string)
+		h.LogActivity(c, &adminIDStr, "UPDATE_USER_STATUS", "USER", userID, "Admin updated user status to "+req.Status)
+	}
 }
-

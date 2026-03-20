@@ -205,6 +205,7 @@ func main() {
 
 			// Step 4 – User management (admin)
 			protected.GET("/users", middleware.RequireRole(authz.RoleSubscriptionManager, authz.RoleSuperAdmin), handler.ListUsers)
+			protected.POST("/admin/users", middleware.RequireRole(authz.RoleSuperAdmin), handler.AdminCreateUser)
 			protected.PUT("/users/:id/role", middleware.RequireRole(authz.RoleSuperAdmin), handler.UpdateUserRole)
 			protected.PUT("/users/:id/status", middleware.RequireRole(authz.RoleSubscriptionManager, authz.RoleSuperAdmin), handler.UpdateUserStatus)
 
@@ -219,6 +220,7 @@ func main() {
 
 			// Subscription management (admin)
 			protected.GET("/subscriptions/all", middleware.RequireRole(authz.RoleSubscriptionManager, authz.RoleSuperAdmin), handler.ListAllSubscriptions)
+			protected.GET("/payments/all", middleware.RequireRole(authz.RoleSubscriptionManager, authz.RoleSuperAdmin), handler.ListAllPayments)
 			protected.GET("/admin/users", middleware.RequireRole(authz.RoleSubscriptionManager, authz.RoleSuperAdmin), handler.AdminListUsers)
 			protected.POST("/admin/subscriptions", middleware.RequireRole(authz.RoleSubscriptionManager, authz.RoleSuperAdmin), handler.AdminCreateSubscription)
 			protected.PUT("/admin/subscriptions/:id", middleware.RequireRole(authz.RoleSubscriptionManager, authz.RoleSuperAdmin), handler.AdminUpdateSubscription)

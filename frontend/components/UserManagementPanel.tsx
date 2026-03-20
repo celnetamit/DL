@@ -33,10 +33,20 @@ export default function UserManagementPanel({ token }: { token: string | null })
   const [users, setUsers] = useState<User[]>([]);
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
   const [filterRole, setFilterRole] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterInstitution, setFilterInstitution] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  const [createForm, setCreateForm] = useState({
+    email: "",
+    password: "",
+    full_name: "",
+    role: "student",
+    status: "active",
+    institution_id: "",
+  });
   const roleNames = (user?.roles || []).map((role) => role.name);
   const canManageRoles = hasAnyRole(roleNames, [ROLE_SUPER_ADMIN]);
   const canManageStatuses = hasAnyRole(roleNames, [ROLE_SUPER_ADMIN, ROLE_SUBSCRIPTION_MANAGER]);
@@ -51,8 +61,9 @@ export default function UserManagementPanel({ token }: { token: string | null })
       if (filterInstitution) params.set("institution_id", filterInstitution);
       const data = await apiFetch<User[]>(`/api/v1/users?${params}`, {}, token);
       setUsers(data);
-    } catch {
-      // silent
+      setMessage(null);
+    } catch (error: any) {
+      setMessage(error.message || "Failed to load users");
     } finally {
       setLoading(false);
     }
@@ -104,11 +115,49 @@ export default function UserManagementPanel({ token }: { token: string | null })
     }
   };
 
+  const handleCreateUser = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!token || !canManageRoles) return;
+    setBusy("create_user");
+    try {
+      await apiFetch("/api/v1/admin/users", {
+        method: "POST",
+        body: JSON.stringify(createForm),
+      }, token);
+      setCreateForm({
+        email: "",
+        password: "",
+        full_name: "",
+        role: "student",
+        status: "active",
+        institution_id: "",
+      });
+      setShowCreateForm(false);
+      setMessage("User created successfully");
+      await fetchUsers();
+    } catch (error: any) {
+      setMessage(error.message || "Failed to create user");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
     <div className="glass rounded-2xl p-6">
       <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
-        <h3 className="font-[var(--font-space)] text-xl">User Management</h3>
+        <div>
+          <h3 className="font-[var(--font-space)] text-xl">User Management</h3>
+          <p className="mt-1 text-xs text-dune/50">View users, adjust access, and create admin-managed accounts.</p>
+        </div>
         <div className="flex gap-3 flex-wrap">
+          {canManageRoles && (
+            <button
+              onClick={() => setShowCreateForm((prev) => !prev)}
+              className="rounded-lg bg-ember px-3 py-1.5 text-xs font-semibold text-midnight"
+            >
+              {showCreateForm ? "Close Create Form" : "+ New User"}
+            </button>
+          )}
           <select
             value={filterRole}
             onChange={(e) => setFilterRole(e.target.value)}
@@ -144,6 +193,74 @@ export default function UserManagementPanel({ token }: { token: string | null })
           </select>
         </div>
       </div>
+
+      {message && <p className="mb-4 text-sm text-ember">{message}</p>}
+
+      {showCreateForm && canManageRoles && (
+        <form onSubmit={handleCreateUser} className="mb-6 grid gap-3 rounded-2xl border border-dune/10 bg-midnight/30 p-4 md:grid-cols-2">
+          <input
+            required
+            value={createForm.full_name}
+            onChange={(e) => setCreateForm({ ...createForm, full_name: e.target.value })}
+            placeholder="Full name"
+            className="rounded-lg bg-midnight/60 border border-dune/20 px-3 py-2 text-sm"
+          />
+          <input
+            required
+            type="email"
+            value={createForm.email}
+            onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
+            placeholder="Email"
+            className="rounded-lg bg-midnight/60 border border-dune/20 px-3 py-2 text-sm"
+          />
+          <input
+            required
+            type="password"
+            value={createForm.password}
+            onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
+            placeholder="Password"
+            className="rounded-lg bg-midnight/60 border border-dune/20 px-3 py-2 text-sm"
+          />
+          <select
+            value={createForm.role}
+            onChange={(e) => setCreateForm({ ...createForm, role: e.target.value })}
+            className="rounded-lg bg-midnight/60 border border-dune/20 px-3 py-2 text-sm"
+          >
+            {ADMIN_ROLE_OPTIONS.map((role) => (
+              <option key={role} value={role}>
+                {roleLabel(role)}
+              </option>
+            ))}
+          </select>
+          <select
+            value={createForm.status}
+            onChange={(e) => setCreateForm({ ...createForm, status: e.target.value })}
+            className="rounded-lg bg-midnight/60 border border-dune/20 px-3 py-2 text-sm"
+          >
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+          <select
+            value={createForm.institution_id}
+            onChange={(e) => setCreateForm({ ...createForm, institution_id: e.target.value })}
+            className="rounded-lg bg-midnight/60 border border-dune/20 px-3 py-2 text-sm"
+          >
+            <option value="">No Institution</option>
+            {institutions.map((institution) => (
+              <option key={institution.id} value={institution.id}>
+                {institution.name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="submit"
+            disabled={busy === "create_user"}
+            className="w-fit rounded-full bg-ember px-4 py-2 text-xs font-semibold text-midnight disabled:opacity-50"
+          >
+            {busy === "create_user" ? "Creating..." : "Create User"}
+          </button>
+        </form>
+      )}
 
       {loading ? (
         <p className="text-sm text-dune/50">Loading users...</p>

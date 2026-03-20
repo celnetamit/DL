@@ -65,6 +65,59 @@ func (h *Handler) AdminListUsers(c *gin.Context) {
 	utils.JSON(c, http.StatusOK, "users", users)
 }
 
+// ListAllPayments - admin billing/purchase history
+func (h *Handler) ListAllPayments(c *gin.Context) {
+	statusFilter := c.Query("status")
+
+	var payments []models.Payment
+	query := h.DB.Order("created_at desc")
+	if statusFilter != "" {
+		query = query.Where("status = ?", statusFilter)
+	}
+
+	if err := query.Find(&payments).Error; err != nil {
+		utils.JSON(c, http.StatusInternalServerError, "failed to fetch payments", nil)
+		return
+	}
+
+	type PaymentOverview struct {
+		models.Payment
+		UserEmail       string `json:"user_email"`
+		UserName        string `json:"user_name"`
+		ProductName     string `json:"product_name"`
+		InstitutionName string `json:"institution_name"`
+	}
+
+	enriched := make([]PaymentOverview, 0, len(payments))
+	for _, payment := range payments {
+		row := PaymentOverview{Payment: payment}
+
+		if payment.UserID != nil {
+			var user models.User
+			if err := h.DB.Select("email, full_name").First(&user, "id = ?", *payment.UserID).Error; err == nil {
+				row.UserEmail = user.Email
+				row.UserName = user.FullName
+			}
+		}
+		if payment.ProductID != nil {
+			var product models.Product
+			if err := h.DB.Select("name").First(&product, "id = ?", *payment.ProductID).Error; err == nil {
+				row.ProductName = product.Name
+			}
+		}
+		if payment.InstitutionID != nil {
+			var institution models.Institution
+			if err := h.DB.Select("name").First(&institution, "id = ?", *payment.InstitutionID).Error; err == nil {
+				row.InstitutionName = institution.Name
+			}
+		}
+
+		enriched = append(enriched, row)
+	}
+
+	utils.JSON(c, http.StatusOK, "payments", enriched)
+}
+
 // AdminCreateSubscription - admin manually creates a subscription record
 func (h *Handler) AdminCreateSubscription(c *gin.Context) {
 	var req struct {
@@ -154,7 +207,6 @@ func (h *Handler) AdminUpdateSubscription(c *gin.Context) {
 
 	utils.JSON(c, http.StatusOK, "subscription updated", sub)
 }
-
 
 // AdminDeleteSubscription - admin hard-deletes a subscription record
 func (h *Handler) AdminDeleteSubscription(c *gin.Context) {

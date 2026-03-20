@@ -9,6 +9,7 @@ function AuthPanelInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams.get("redirect");
+  const authMode = searchParams.get("auth");
   
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
@@ -18,6 +19,17 @@ function AuthPanelInner() {
   const [code, setCode] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (token) return;
+    if (authMode === "register") {
+      setMode("register");
+      return;
+    }
+    if (authMode === "login") {
+      setMode("login");
+    }
+  }, [authMode, token]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
