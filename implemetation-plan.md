@@ -186,3 +186,103 @@ Stabilize the payment-to-access lifecycle, formalize schema change management, a
 3. Critical backend flows are test-covered.
 4. Admin flows expose real errors and success feedback.
 5. Basic observability exists for auth, payments, AI, and webhooks.
+
+## Sprint Status Snapshot
+
+### SPR-1: Persist payment-to-access lifecycle end-to-end
+**Status:** Partial, but strongly advanced
+
+**Done**
+1. Order creation, payment verification, purchase creation, and subscription/access linkage now exist as a connected lifecycle.
+2. Buyer and admin purchase/payment history views are implemented.
+3. Dashboard surfaces now show purchases, billing history, and access state.
+4. Core backend coverage exists for the purchase lifecycle.
+
+**Pending**
+1. Make purchase/license state the single canonical source for entitlement checks across the full product.
+2. Add more edge-case coverage for duplicate callbacks, reconciliation, and partial payment states.
+3. Expand browser coverage around admin-side purchase management and reconciliation flows.
+
+**Next Action**
+1. Normalize all entitlement decisions around the `Purchase` record and tighten duplicate/webhook handling.
+
+### SPR-2: Introduce SQL migration system and baseline migration set
+**Status:** Done for intended scope
+
+**Done**
+1. Embedded SQL migration runner added.
+2. Baseline migration and follow-up migrations added.
+3. Existing auto-migrated databases can be safely baselined into the migration system.
+4. Startup now uses migrations instead of GORM `AutoMigrate`.
+
+**Pending**
+1. Optional future work only: add a rollback/down-migration strategy if reversible migrations become a requirement.
+
+**Next Action**
+1. Continue adding versioned migrations as schema changes evolve.
+
+### SPR-3: Add backend tests for payment/subscription/institution flows
+**Status:** Partial, but substantially complete
+
+**Done**
+1. Backend tests now cover payment and purchase history flows.
+2. Institution overview and admin institution/payment enrichment tests exist.
+3. Analytics and AI log tests were added.
+4. Middleware/request tracing coverage exists.
+
+**Pending**
+1. Add webhook-specific tests and more transaction-failure coverage.
+2. Expand RBAC edge-case coverage around manager and institution-scoped permissions.
+3. Add more multi-step integration-style backend tests.
+
+**Next Action**
+1. Add webhook idempotency and reconciliation tests as the next backend coverage slice.
+
+### SPR-4: Replace admin alerts/confirms with proper feedback components
+**Status:** Done for main app flows
+
+**Done**
+1. Browser `alert()` and `confirm()` usage was removed from the main admin, dashboard, pricing, compliance, domains, products, and settings flows.
+2. Toasts and inline confirmation patterns now provide visible success/error feedback.
+3. Silent admin failures were replaced with clearer error states in major panels.
+
+**Pending**
+1. Optional consistency/accessibility polish only, such as a more unified feedback system and focus management review.
+
+**Next Action**
+1. Treat this ticket as complete unless a UX consistency pass is scheduled.
+
+### SPR-5: Add analytics endpoints with date filters and charts
+**Status:** Partial to mostly complete
+
+**Done**
+1. Admin analytics now support selectable month windows.
+2. Revenue, user growth, institution growth, purchase status, and top-product analytics were added.
+3. Admin dashboard charts/cards now render richer analytics and system-status signals.
+
+**Pending**
+1. Add deeper filters beyond month windows, such as custom ranges, exports, or cohort-style reporting.
+2. Expand institution-specific analytics depth if needed.
+3. Add reporting/export support if stakeholders need downloadable analytics.
+
+**Next Action**
+1. Add custom date-range filtering and export/report support if analytics becomes a stronger product requirement.
+
+### SPR-6: Harden Gemini generation pipeline and error handling
+**Status:** Partial to mostly complete
+
+**Done**
+1. Gemini response validation and fallback handling were implemented.
+2. Timeout-aware backend AI calls and better upstream error handling were added.
+3. AI audit logging and admin AI monitoring were implemented.
+4. SSRF protections were added for source URL ingestion.
+5. AI audit payloads were redacted/minimized instead of storing and returning raw prompt/response content.
+6. Failure-path backend coverage exists for malformed and upstream-failure AI scenarios.
+
+**Pending**
+1. Parse and persist Gemini safety/block reasons more explicitly.
+2. Add retry/backoff behavior for transient upstream failures.
+3. Define longer-term retention/redaction policy for stored AI previews and audit data.
+
+**Next Action**
+1. Add structured Gemini block/safety classification and transient retry behavior.

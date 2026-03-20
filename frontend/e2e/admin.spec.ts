@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { mockAdminApi, mockInstitutionLoadError, seedSession } from "./helpers";
+import { mockAIFilteredLogs, mockAdminApi, mockInstitutionCrud, mockInstitutionLoadError, seedSession } from "./helpers";
 
 test("admin page shows restricted state for unauthenticated visitors", async ({ page }) => {
   await page.goto("/admin");
@@ -43,6 +43,52 @@ test("content managers can inspect AI logs in the admin console", async ({ page 
   await expect(page.getByRole("heading", { name: "AI Generation Audit Trail" })).toBeVisible();
   await expect(page.getByText("AI Lesson")).toBeVisible();
   await expect(page.getByText("gemini-1.5-flash")).toBeVisible();
+});
+
+test("content managers can filter AI logs down to failures", async ({ page }) => {
+  await seedSession(page, {
+    token: "token",
+    user: {
+      email: "manager@example.com",
+      roles: [{ name: "content_manager" }],
+    },
+  });
+  await mockAdminApi(page);
+  await mockAIFilteredLogs(page);
+
+  await page.goto("/admin");
+  await page.getByRole("button", { name: "AI Logs" }).click();
+
+  await page.getByRole("combobox").selectOption("failed");
+  await page.getByRole("button", { name: "Refresh" }).click();
+
+  await expect(page.getByText("Failed Lesson")).toBeVisible();
+  await expect(page.getByText("Upstream timeout")).toBeVisible();
+});
+
+test("super admins can open the institution form from the admin console", async ({ page }) => {
+  await seedSession(page, {
+    token: "token",
+    user: {
+      email: "admin@example.com",
+      roles: [{ name: "super_admin" }],
+    },
+  });
+  await mockAdminApi(page);
+  await mockInstitutionCrud(page);
+
+  await page.goto("/admin");
+  await page.getByRole("button", { name: "Institutions" }).click();
+  await page.getByRole("button", { name: "+ New Institution" }).click();
+
+  await expect(page.getByPlaceholder("Institution name *")).toBeVisible();
+  await page.getByPlaceholder("Institution name *").fill("South Campus");
+  await page.getByPlaceholder("Email domain (e.g. mit.edu)").fill("south.edu");
+  await page.getByPlaceholder("Invite code").fill("SOUTH");
+  await page.getByPlaceholder("Student seat limit").fill("200");
+  await page.getByRole("button", { name: "Create Institution" }).click();
+
+  await expect(page.getByText("Institution created")).toBeVisible();
 });
 
 test("super admins see a visible institution load error when the API fails", async ({ page }) => {
