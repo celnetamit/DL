@@ -14,6 +14,11 @@ export type AuthUser = {
   roles?: { name: string }[];
   institution_id?: string;
   avatar_url?: string;
+  session?: {
+    can_revert?: boolean;
+    switched_role?: string;
+    original_roles?: string[];
+  };
 };
 
 export function useAuth() {
@@ -66,6 +71,40 @@ export function useAuth() {
     [saveSession],
   );
 
+  const switchRole = useCallback(async (role: string) => {
+    if (!token) throw new Error("Not authenticated");
+    const response = await fetch(`${API_URL}/api/v1/auth/switch-role`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ role }),
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.success) {
+      throw new Error(payload.message || "Failed to switch role");
+    }
+    saveSession(payload.data.token, payload.data.user);
+    return payload.data;
+  }, [token, saveSession]);
+
+  const revertRole = useCallback(async () => {
+    if (!token) throw new Error("Not authenticated");
+    const response = await fetch(`${API_URL}/api/v1/auth/revert-role`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.success) {
+      throw new Error(payload.message || "Failed to revert role");
+    }
+    saveSession(payload.data.token, payload.data.user);
+    return payload.data;
+  }, [token, saveSession]);
+
   /** Redirect the browser to the backend Google OAuth initiation endpoint. */
   const loginWithGoogle = useCallback(() => {
     window.location.href = `${API_URL}/api/v1/auth/google`;
@@ -110,5 +149,7 @@ export function useAuth() {
     logout,
     loginWithGoogle,
     handleGoogleCallback,
+    switchRole,
+    revertRole,
   };
 }

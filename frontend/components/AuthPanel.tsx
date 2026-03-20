@@ -3,9 +3,26 @@
 import { useState, useEffect, Suspense } from "react";
 import { useAuth } from "@/lib/auth";
 import { useRouter, useSearchParams } from "next/navigation";
+import {
+  ROLE_CONTENT_MANAGER,
+  ROLE_INSTITUTION_ADMIN,
+  ROLE_INSTRUCTOR,
+  ROLE_STUDENT,
+  ROLE_SUBSCRIPTION_MANAGER,
+  ROLE_SUPER_ADMIN,
+  roleLabel,
+} from "@/lib/roles";
+
+const ROLE_SWITCH_OPTIONS = [
+  ROLE_STUDENT,
+  ROLE_INSTRUCTOR,
+  ROLE_INSTITUTION_ADMIN,
+  ROLE_CONTENT_MANAGER,
+  ROLE_SUBSCRIPTION_MANAGER,
+];
 
 function AuthPanelInner() {
-  const { token, user, loading, login, register, logout, loginWithGoogle } = useAuth();
+  const { token, user, loading, login, register, logout, loginWithGoogle, switchRole, revertRole } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams.get("redirect");
@@ -19,6 +36,7 @@ function AuthPanelInner() {
   const [code, setCode] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [switchRoleValue, setSwitchRoleValue] = useState(ROLE_STUDENT);
 
   useEffect(() => {
     if (token) return;
@@ -61,6 +79,10 @@ function AuthPanelInner() {
   }
 
   if (token && user) {
+    const roleNames = (user.roles || []).map((role) => role.name);
+    const isSuperAdmin = roleNames.includes(ROLE_SUPER_ADMIN);
+    const canRevert = Boolean(user.session?.can_revert);
+
     return (
       <div className="glass rounded-2xl p-6">
         <p className="text-xs uppercase tracking-[0.2em] text-dune/60">Authenticated</p>
@@ -73,6 +95,71 @@ function AuthPanelInner() {
             </span>
           ))}
         </div>
+        {(isSuperAdmin || canRevert) && (
+          <div className="mt-5 rounded-2xl border border-dune/10 bg-midnight/30 p-4">
+            <p className="text-[10px] uppercase tracking-[0.25em] text-ember">Role Preview</p>
+            {canRevert && (
+              <p className="mt-2 text-xs text-dune/60">
+                You are currently previewing the <span className="text-ember">{user.session?.switched_role}</span> role.
+              </p>
+            )}
+            {!canRevert && (
+              <div className="mt-3 flex gap-2">
+                <select
+                  value={switchRoleValue}
+                  onChange={(event) => setSwitchRoleValue(event.target.value)}
+                  className="flex-1 rounded-xl bg-midnight/60 px-3 py-2 text-sm outline-none border border-dune/20"
+                >
+                  {ROLE_SWITCH_OPTIONS.map((role) => (
+                    <option key={role} value={role}>
+                      {roleLabel(role)}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={async () => {
+                    setBusy(true);
+                    setMessage(null);
+                    try {
+                      await switchRole(switchRoleValue);
+                      setMessage(`Now previewing ${roleLabel(switchRoleValue)}.`);
+                      router.refresh();
+                    } catch (error) {
+                      setMessage(error instanceof Error ? error.message : "Failed to switch role");
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                  disabled={busy}
+                  className="rounded-full bg-ember px-4 py-2 text-sm font-semibold text-midnight disabled:opacity-50"
+                >
+                  {busy ? "Switching..." : "Switch Role"}
+                </button>
+              </div>
+            )}
+            {canRevert && (
+              <button
+                onClick={async () => {
+                  setBusy(true);
+                  setMessage(null);
+                  try {
+                    await revertRole();
+                    setMessage("Reverted to the original super admin role.");
+                    router.refresh();
+                  } catch (error) {
+                    setMessage(error instanceof Error ? error.message : "Failed to revert role");
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+                disabled={busy}
+                className="mt-3 rounded-full border border-ember/30 bg-ember/10 px-4 py-2 text-sm font-semibold text-ember disabled:opacity-50"
+              >
+                {busy ? "Reverting..." : "Revert to Super Admin"}
+              </button>
+            )}
+          </div>
+        )}
         <button
           onClick={logout}
           className="mt-6 rounded-full border border-dune/30 px-4 py-2 text-sm"

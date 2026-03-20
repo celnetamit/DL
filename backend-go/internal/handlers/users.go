@@ -19,12 +19,13 @@ func (h *Handler) GetMe(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 
 	var user models.User
-	if err := h.DB.Preload("Roles").First(&user, "id = ?", userID).Error; err != nil {
+	if err := h.DB.Preload("Roles").Preload("Institution").First(&user, "id = ?", userID).Error; err != nil {
 		utils.JSON(c, http.StatusNotFound, "user not found", nil)
 		return
 	}
 
-	utils.JSON(c, http.StatusOK, "profile", user)
+	effectiveRoles := authz.NormalizeRoleClaims(c.MustGet("roles"))
+	utils.JSON(c, http.StatusOK, "profile", h.buildAuthUser(c, user, effectiveRoles))
 }
 
 func (h *Handler) UpdateMe(c *gin.Context) {

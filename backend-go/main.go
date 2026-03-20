@@ -163,6 +163,8 @@ func main() {
 		{
 			protected.GET("/users/me", handler.GetMe)
 			protected.PUT("/users/me", handler.UpdateMe)
+			protected.POST("/auth/switch-role", handler.SwitchRole)
+			protected.POST("/auth/revert-role", handler.RevertRole)
 			protected.POST("/subscriptions/create-order", handler.CreateOrder)
 			protected.POST("/subscriptions/create-subscription", handler.CreateSubscription)
 			protected.GET("/subscriptions/me", handler.GetMySubscriptions)
