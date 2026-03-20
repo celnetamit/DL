@@ -153,7 +153,30 @@ export default function AdminDashboard() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [analytics, setAnalytics] = useState({ total_users: 0, active_subscriptions: 0, total_revenue: 0 });
+  const [analyticsWindow, setAnalyticsWindow] = useState(6);
+  const [analytics, setAnalytics] = useState({
+    total_users: 0,
+    total_institutions: 0,
+    active_subscriptions: 0,
+    total_revenue: 0,
+    months: 6,
+    monthly_growth: [] as Array<{
+      label: string;
+      users: number;
+      institutions: number;
+      new_subscriptions: number;
+      active_subscriptions: number;
+      captured_payments: number;
+      revenue: number;
+    }>,
+    purchase_access_breakdown: {} as Record<string, number>,
+    purchase_payment_breakdown: {} as Record<string, number>,
+    top_products: [] as Array<{
+      product_id: string;
+      product_name: string;
+      purchase_count: number;
+    }>,
+  });
   const [globalDomains, setGlobalDomains] = useState<any[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
@@ -221,7 +244,7 @@ export default function AdminDashboard() {
     if (!authLoading && token) {
       setAnalyticsLoadError(null);
       setDomainLoadError(null);
-      getAdminAnalytics(token)
+      getAdminAnalytics(token, analyticsWindow)
         .then(setAnalytics)
         .catch((error) => {
           console.error(error);
@@ -238,7 +261,10 @@ export default function AdminDashboard() {
           setToast({ message, tone: "error" });
         });
     }
-  }, [token, authLoading]);
+  }, [token, authLoading, analyticsWindow]);
+
+  const maxRevenue = Math.max(...analytics.monthly_growth.map((point) => point.revenue), 0);
+  const maxUsers = Math.max(...analytics.monthly_growth.map((point) => point.users), 0);
 
   const resetForm = () => {
     setFormState(emptyForm(category.fields));
@@ -486,12 +512,116 @@ export default function AdminDashboard() {
           <p className="mt-4 font-[var(--font-space)] text-4xl font-semibold text-ember">{analytics.total_users}</p>
         </div>
         <div className="glass rounded-2xl p-6 border border-dune/20">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-dune/60">Institutions</p>
+          <p className="mt-4 font-[var(--font-space)] text-4xl font-semibold text-ember">{analytics.total_institutions}</p>
+        </div>
+        <div className="glass rounded-2xl p-6 border border-dune/20">
           <p className="text-[10px] font-bold uppercase tracking-widest text-dune/60">Active Subscriptions</p>
           <p className="mt-4 font-[var(--font-space)] text-4xl font-semibold text-ember">{analytics.active_subscriptions}</p>
         </div>
         <div className="glass rounded-2xl p-6 border border-dune/20">
           <p className="text-[10px] font-bold uppercase tracking-widest text-dune/60">Total Revenue</p>
           <p className="mt-4 font-[var(--font-space)] text-4xl font-semibold text-ember">₹{analytics.total_revenue}</p>
+        </div>
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-[1.4fr_0.6fr] mb-8 min-w-0 w-full">
+        <div className="glass rounded-2xl p-6 border border-dune/20">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-dune/60">Growth Analytics</p>
+              <h3 className="mt-2 font-[var(--font-space)] text-2xl">Revenue, users, and subscriptions</h3>
+            </div>
+            <select
+              value={analyticsWindow}
+              onChange={(event) => setAnalyticsWindow(Number(event.target.value))}
+              className="rounded-full border border-dune/20 bg-midnight/40 px-3 py-1.5 text-xs text-dune outline-none"
+            >
+              <option value={3}>Last 3 months</option>
+              <option value={6}>Last 6 months</option>
+              <option value={12}>Last 12 months</option>
+            </select>
+          </div>
+          <div className="mt-6 grid gap-6 md:grid-cols-2">
+            <div>
+              <p className="text-xs uppercase tracking-widest text-dune/55">Revenue Trend</p>
+              <div className="mt-4 flex h-48 items-end gap-3">
+                {analytics.monthly_growth.map((point) => (
+                  <div key={`revenue-${point.label}`} className="flex flex-1 flex-col items-center gap-2">
+                    <div className="flex h-36 w-full items-end rounded-2xl bg-dune/5 p-2">
+                      <div
+                        className="w-full rounded-xl bg-ember/80 transition-all"
+                        style={{ height: `${maxRevenue > 0 ? Math.max((point.revenue / maxRevenue) * 100, 8) : 8}%` }}
+                      />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[11px] font-semibold text-dune">₹{Math.round(point.revenue)}</p>
+                      <p className="text-[10px] uppercase tracking-widest text-dune/45">{point.label}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-widest text-dune/55">User Growth</p>
+              <div className="mt-4 space-y-3">
+                {analytics.monthly_growth.map((point) => (
+                  <div key={`users-${point.label}`} className="rounded-2xl border border-dune/10 bg-midnight/25 p-3">
+                    <div className="flex items-center justify-between gap-3 text-xs">
+                      <span className="uppercase tracking-widest text-dune/45">{point.label}</span>
+                      <span className="text-dune/75">{point.users} users, {point.institutions} institutions</span>
+                    </div>
+                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-dune/10">
+                      <div
+                        className="h-full rounded-full bg-moss"
+                        style={{ width: `${maxUsers > 0 ? Math.max((point.users / maxUsers) * 100, 8) : 8}%` }}
+                      />
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-dune/60">
+                      <span>{point.new_subscriptions} new subs</span>
+                      <span>{point.active_subscriptions} active</span>
+                      <span>{point.captured_payments} paid</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          <div className="glass rounded-2xl p-6 border border-dune/20">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-dune/60">Purchase Access</p>
+            <div className="mt-4 space-y-3">
+              {Object.entries(analytics.purchase_access_breakdown).length === 0 ? (
+                <p className="text-sm text-dune/50">No purchase access data in this window.</p>
+              ) : (
+                Object.entries(analytics.purchase_access_breakdown).map(([status, count]) => (
+                  <div key={status} className="flex items-center justify-between rounded-xl bg-midnight/25 px-3 py-2 text-sm">
+                    <span className="uppercase tracking-widest text-dune/55">{status}</span>
+                    <span className="font-semibold text-dune">{count}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+          <div className="glass rounded-2xl p-6 border border-dune/20">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-dune/60">Top Products</p>
+            <div className="mt-4 space-y-3">
+              {analytics.top_products.length === 0 ? (
+                <p className="text-sm text-dune/50">No product sales tracked in this window.</p>
+              ) : (
+                analytics.top_products.map((product) => (
+                  <div key={product.product_id} className="rounded-xl bg-midnight/25 px-3 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-dune">{product.product_name || "Unnamed Product"}</p>
+                      <span className="text-xs text-ember">{product.purchase_count} purchases</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </div>
       </section>
 

@@ -306,8 +306,8 @@ export async function getMyPayments(token: string) {
   return apiFetch<any[]>("/api/v1/subscriptions/payments/me", { cache: "no-store" }, token);
 }
 
-export async function getAdminAnalytics(token: string) {
-  return apiFetch<any>("/api/v1/analytics", {}, token);
+export async function getAdminAnalytics(token: string, months = 6) {
+  return apiFetch<any>(`/api/v1/analytics?months=${months}`, {}, token);
 }
 
 export async function getInstitutionOverview(institutionId: string, token: string) {
