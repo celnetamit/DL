@@ -44,6 +44,7 @@ func main() {
 			&models.User{},
 			&models.Role{},
 			&models.Subscription{},
+			&models.Purchase{},
 			&models.Payment{},
 			&models.Course{},
 			&models.Module{},
@@ -166,8 +167,11 @@ func main() {
 			protected.POST("/auth/switch-role", handler.SwitchRole)
 			protected.POST("/auth/revert-role", handler.RevertRole)
 			protected.POST("/subscriptions/create-order", handler.CreateOrder)
+			protected.POST("/subscriptions/verify-order-payment", handler.VerifyOrderPayment)
 			protected.POST("/subscriptions/create-subscription", handler.CreateSubscription)
 			protected.GET("/subscriptions/me", handler.GetMySubscriptions)
+			protected.GET("/subscriptions/purchases/me", handler.GetMyPurchases)
+			protected.GET("/subscriptions/payments/me", handler.GetMyPayments)
 			protected.PUT("/subscriptions/:id/cancel", handler.CancelSubscription)
 
 			protected.GET("/analytics", middleware.RequireRole(authz.RoleSuperAdmin, authz.RoleSubscriptionManager, authz.RoleContentManager), handler.GetAdminAnalytics)
@@ -222,6 +226,7 @@ func main() {
 
 			// Subscription management (admin)
 			protected.GET("/subscriptions/all", middleware.RequireRole(authz.RoleSubscriptionManager, authz.RoleSuperAdmin), handler.ListAllSubscriptions)
+			protected.GET("/purchases/all", middleware.RequireRole(authz.RoleSubscriptionManager, authz.RoleSuperAdmin), handler.ListAllPurchases)
 			protected.GET("/payments/all", middleware.RequireRole(authz.RoleSubscriptionManager, authz.RoleSuperAdmin), handler.ListAllPayments)
 			protected.GET("/admin/users", middleware.RequireRole(authz.RoleSubscriptionManager, authz.RoleSuperAdmin), handler.AdminListUsers)
 			protected.POST("/admin/subscriptions", middleware.RequireRole(authz.RoleSubscriptionManager, authz.RoleSuperAdmin), handler.AdminCreateSubscription)

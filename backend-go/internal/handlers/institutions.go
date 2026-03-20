@@ -337,10 +337,28 @@ func (h *Handler) GetInstitutionOverview(c *gin.Context) {
 		TotalSubscriptionCount  int      `json:"total_subscription_count"`
 	}
 
+	type paymentOverview struct {
+		ID                 string    `json:"id"`
+		PurchaseID         string    `json:"purchase_id"`
+		SubscriptionID     *string   `json:"subscription_id"`
+		ProductID          *string   `json:"product_id"`
+		PlanCode           string    `json:"plan_code"`
+		Description        string    `json:"description"`
+		RazorpayPaymentID  *string   `json:"razorpay_payment_id"`
+		RazorpayOrderID    *string   `json:"razorpay_order_id"`
+		Amount             int       `json:"amount"`
+		Currency           string    `json:"currency"`
+		Status             string    `json:"status"`
+		CreatedAt          time.Time `json:"created_at"`
+		ProductName        string    `json:"product_name"`
+		ProductTier        string    `json:"product_tier"`
+		SubscriptionStatus string    `json:"subscription_status"`
+		AccessStatus       string    `json:"access_status"`
+	}
+
 	subscriptionSummaries := make([]subscriptionOverview, 0, len(subscriptions))
 	productAccessMap := map[string]*productAccess{}
 	activeSubscriptions := 0
-	totalBilling := 0.0
 
 	for _, sub := range subscriptions {
 		var (
@@ -381,7 +399,6 @@ func (h *Handler) GetInstitutionOverview(c *gin.Context) {
 		if sub.Status == "active" {
 			activeSubscriptions++
 		}
-		totalBilling += price
 		subscriptionSummaries = append(subscriptionSummaries, subscriptionOverview{
 			Subscription: sub,
 			ProductName:  productName,
@@ -402,6 +419,55 @@ func (h *Handler) GetInstitutionOverview(c *gin.Context) {
 		}
 		return productAccessList[i].ActiveSubscriptionCount > productAccessList[j].ActiveSubscriptionCount
 	})
+
+	var payments []models.Payment
+	if err := h.DB.Where("institution_id = ?", id).Order("created_at desc").Find(&payments).Error; err != nil {
+		utils.JSON(c, http.StatusInternalServerError, "failed to load institution payments", nil)
+		return
+	}
+
+	subscriptionStatusByID := map[string]string{}
+	for _, sub := range subscriptions {
+		subscriptionStatusByID[sub.ID] = sub.Status
+	}
+
+	paymentSummaries := make([]paymentOverview, 0, len(payments))
+	totalBilling := 0.0
+	for _, payment := range payments {
+		row := paymentOverview{
+			ID:                payment.ID,
+			SubscriptionID:    payment.SubscriptionID,
+			ProductID:         payment.ProductID,
+			PlanCode:          payment.PlanCode,
+			Description:       payment.Description,
+			RazorpayPaymentID: payment.RazorpayPaymentID,
+			RazorpayOrderID:   payment.RazorpayOrderID,
+			Amount:            payment.Amount,
+			Currency:          payment.Currency,
+			Status:            payment.Status,
+			CreatedAt:         payment.CreatedAt,
+		}
+
+		if payment.ProductID != nil {
+			if product, exists := productByID[*payment.ProductID]; exists {
+				row.ProductName = product.Name
+				row.ProductTier = product.Tier
+			}
+		}
+		if payment.SubscriptionID != nil {
+			row.SubscriptionStatus = subscriptionStatusByID[*payment.SubscriptionID]
+		}
+		var purchase models.Purchase
+		if err := h.DB.Select("id, access_status").First(&purchase, "payment_id = ?", payment.ID).Error; err == nil {
+			row.PurchaseID = purchase.ID
+			row.AccessStatus = purchase.AccessStatus
+		}
+		if payment.Status == "captured" {
+			totalBilling += float64(payment.Amount) / 100
+		}
+
+		paymentSummaries = append(paymentSummaries, row)
+	}
 
 	type monthlyGrowthPoint struct {
 		Label          string `json:"label"`
@@ -459,6 +525,7 @@ func (h *Handler) GetInstitutionOverview(c *gin.Context) {
 		},
 		"members":        memberSummaries,
 		"subscriptions":  subscriptionSummaries,
+		"payments":       paymentSummaries,
 		"product_access": productAccessList,
 		"monthly_growth": monthlyGrowth,
 	})

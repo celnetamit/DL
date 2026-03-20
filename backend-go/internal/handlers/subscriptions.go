@@ -11,6 +11,7 @@ import (
 	"lms-backend/internal/utils"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 type createOrderRequest struct {
@@ -25,6 +26,12 @@ type createSubscriptionRequest struct {
 	CustomerID    string `json:"customer_id"`
 	CustomerName  string `json:"customer_name"`
 	CustomerEmail string `json:"customer_email"`
+}
+
+type verifyPaymentRequest struct {
+	RazorpayPaymentID string `json:"razorpay_payment_id" binding:"required"`
+	RazorpayOrderID   string `json:"razorpay_order_id" binding:"required"`
+	RazorpaySignature string `json:"razorpay_signature" binding:"required"`
 }
 
 func (h *Handler) getRazorpay() services.RazorpayService {
@@ -84,6 +91,21 @@ func (h *Handler) CreateOrder(c *gin.Context) {
 
 	h.DB.Create(&payment)
 
+	purchase := models.Purchase{
+		UserID:          payment.UserID,
+		InstitutionID:   payment.InstitutionID,
+		ProductID:       payment.ProductID,
+		PaymentID:       &payment.ID,
+		PlanCode:        payment.PlanCode,
+		PurchaseType:    "one_time",
+		AccessStatus:    "pending",
+		PaymentStatus:   payment.Status,
+		Amount:          payment.Amount,
+		Currency:        payment.Currency,
+		RazorpayOrderID: payment.RazorpayOrderID,
+	}
+	h.DB.Create(&purchase)
+
 	utils.JSON(c, http.StatusOK, "order created", gin.H{"order": order, "payment": payment})
 }
 
@@ -108,6 +130,164 @@ func (h *Handler) GetMySubscriptions(c *gin.Context) {
 	}
 
 	utils.JSON(c, http.StatusOK, "subscriptions retrieved", subs)
+}
+
+func (h *Handler) GetMyPayments(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+
+	var user models.User
+	if err := h.DB.First(&user, "id = ?", userID).Error; err != nil {
+		utils.JSON(c, http.StatusInternalServerError, "failed to identify user", nil)
+		return
+	}
+
+	var payments []models.Payment
+	query := h.DB.Order("created_at desc").Where("user_id = ?", userID)
+	if user.InstitutionID != nil {
+		query = h.DB.Order("created_at desc").Where("user_id = ? OR institution_id = ?", userID, user.InstitutionID)
+	}
+
+	if err := query.Find(&payments).Error; err != nil {
+		utils.JSON(c, http.StatusInternalServerError, "failed to fetch payments", nil)
+		return
+	}
+
+	type paymentOverview struct {
+		models.Payment
+		ProductName        string `json:"product_name"`
+		ProductTier        string `json:"product_tier"`
+		SubscriptionStatus string `json:"subscription_status"`
+		PurchaseID         string `json:"purchase_id"`
+		AccessStatus       string `json:"access_status"`
+	}
+
+	enriched := make([]paymentOverview, 0, len(payments))
+	for _, payment := range payments {
+		row := paymentOverview{Payment: payment}
+
+		if payment.ProductID != nil {
+			var product models.Product
+			if err := h.DB.Select("name, tier").First(&product, "id = ?", *payment.ProductID).Error; err == nil {
+				row.ProductName = product.Name
+				row.ProductTier = product.Tier
+			}
+		}
+		if payment.SubscriptionID != nil {
+			var sub models.Subscription
+			if err := h.DB.Select("status").First(&sub, "id = ?", *payment.SubscriptionID).Error; err == nil {
+				row.SubscriptionStatus = sub.Status
+			}
+		}
+		var purchase models.Purchase
+		if err := h.DB.Select("id, access_status").First(&purchase, "payment_id = ?", payment.ID).Error; err == nil {
+			row.PurchaseID = purchase.ID
+			row.AccessStatus = purchase.AccessStatus
+		}
+
+		enriched = append(enriched, row)
+	}
+
+	utils.JSON(c, http.StatusOK, "payments retrieved", enriched)
+}
+
+func (h *Handler) GetMyPurchases(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+
+	var user models.User
+	if err := h.DB.First(&user, "id = ?", userID).Error; err != nil {
+		utils.JSON(c, http.StatusInternalServerError, "failed to identify user", nil)
+		return
+	}
+
+	var purchases []models.Purchase
+	query := h.DB.Order("created_at desc").Where("user_id = ?", userID)
+	if user.InstitutionID != nil {
+		query = h.DB.Order("created_at desc").Where("user_id = ? OR institution_id = ?", userID, user.InstitutionID)
+	}
+
+	if err := query.Find(&purchases).Error; err != nil {
+		utils.JSON(c, http.StatusInternalServerError, "failed to fetch purchases", nil)
+		return
+	}
+
+	type purchaseOverview struct {
+		models.Purchase
+		ProductName        string `json:"product_name"`
+		ProductTier        string `json:"product_tier"`
+		SubscriptionStatus string `json:"subscription_status"`
+		UserEmail          string `json:"user_email"`
+		InstitutionName    string `json:"institution_name"`
+	}
+
+	enriched := make([]purchaseOverview, 0, len(purchases))
+	for _, purchase := range purchases {
+		row := purchaseOverview{Purchase: purchase}
+		if purchase.ProductID != nil {
+			var product models.Product
+			if err := h.DB.Select("name, tier").First(&product, "id = ?", *purchase.ProductID).Error; err == nil {
+				row.ProductName = product.Name
+				row.ProductTier = product.Tier
+			}
+		}
+		if purchase.SubscriptionID != nil {
+			var sub models.Subscription
+			if err := h.DB.Select("status").First(&sub, "id = ?", *purchase.SubscriptionID).Error; err == nil {
+				row.SubscriptionStatus = sub.Status
+			}
+		}
+		if purchase.UserID != nil {
+			var buyer models.User
+			if err := h.DB.Select("email").First(&buyer, "id = ?", *purchase.UserID).Error; err == nil {
+				row.UserEmail = buyer.Email
+			}
+		}
+		if purchase.InstitutionID != nil {
+			var institution models.Institution
+			if err := h.DB.Select("name").First(&institution, "id = ?", *purchase.InstitutionID).Error; err == nil {
+				row.InstitutionName = institution.Name
+			}
+		}
+		enriched = append(enriched, row)
+	}
+
+	utils.JSON(c, http.StatusOK, "purchases retrieved", enriched)
+}
+
+func (h *Handler) VerifyOrderPayment(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+
+	var req verifyPaymentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.JSON(c, http.StatusBadRequest, "invalid request", gin.H{"error": err.Error()})
+		return
+	}
+
+	razorpay := h.getRazorpay()
+	if !services.VerifyPaymentSignature(req.RazorpayOrderID, req.RazorpayPaymentID, req.RazorpaySignature, razorpay.KeySecret) {
+		utils.JSON(c, http.StatusUnauthorized, "invalid signature", nil)
+		return
+	}
+
+	var payment models.Payment
+	if err := h.DB.First(&payment, "razorpay_order_id = ?", req.RazorpayOrderID).Error; err != nil {
+		utils.JSON(c, http.StatusNotFound, "payment record not found", nil)
+		return
+	}
+
+	uid := userID.(string)
+	if payment.UserID != nil && *payment.UserID != uid {
+		utils.JSON(c, http.StatusForbidden, "not authorized to verify this payment", nil)
+		return
+	}
+
+	if err := h.activateEntitlementForPayment(&payment, req.RazorpayPaymentID, "captured"); err != nil {
+		utils.JSON(c, http.StatusInternalServerError, "failed to provision access", gin.H{"error": err.Error()})
+		return
+	}
+
+	utils.JSON(c, http.StatusOK, "payment verified and access activated", gin.H{
+		"payment": payment,
+	})
 }
 
 func (h *Handler) CreateSubscription(c *gin.Context) {
@@ -210,10 +390,25 @@ func (h *Handler) handlePaymentEvent(payload map[string]interface{}, status stri
 		return
 	}
 
-	h.DB.Model(&models.Payment{}).Where("razorpay_order_id = ?", orderID).Updates(map[string]interface{}{
-		"status":              status,
-		"razorpay_payment_id": paymentID,
-	})
+	var payment models.Payment
+	if err := h.DB.First(&payment, "razorpay_order_id = ?", orderID).Error; err == nil {
+		if status == "captured" {
+			if err := h.activateEntitlementForPayment(&payment, paymentID, status); err != nil {
+				return
+			}
+		} else {
+			updates := map[string]interface{}{
+				"status":              status,
+				"razorpay_payment_id": paymentID,
+			}
+			h.DB.Model(&models.Payment{}).Where("id = ?", payment.ID).Updates(updates)
+			h.DB.Model(&models.Purchase{}).Where("payment_id = ?", payment.ID).Updates(map[string]interface{}{
+				"payment_status":      status,
+				"access_status":       "pending",
+				"razorpay_payment_id": paymentID,
+			})
+		}
+	}
 
 	if subscriptionID != "" {
 		update := map[string]interface{}{"status": "active"}
@@ -222,6 +417,100 @@ func (h *Handler) handlePaymentEvent(payload map[string]interface{}, status stri
 		}
 		h.DB.Model(&models.Subscription{}).Where("razorpay_subscription_id = ?", subscriptionID).Updates(update)
 	}
+}
+
+func (h *Handler) activateEntitlementForPayment(payment *models.Payment, paymentID string, paymentStatus string) error {
+	updates := map[string]interface{}{
+		"status": paymentStatus,
+	}
+	if paymentID != "" {
+		updates["razorpay_payment_id"] = paymentID
+	}
+
+	return h.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&models.Payment{}).Where("id = ?", payment.ID).Updates(updates).Error; err != nil {
+			return err
+		}
+
+		var refreshed models.Payment
+		if err := tx.First(&refreshed, "id = ?", payment.ID).Error; err != nil {
+			return err
+		}
+
+		sub, err := ensurePaymentSubscription(tx, &refreshed)
+		if err != nil {
+			return err
+		}
+
+		if err := tx.Model(&models.Payment{}).Where("id = ?", refreshed.ID).Update("subscription_id", sub.ID).Error; err != nil {
+			return err
+		}
+
+		now := time.Now().UTC()
+		purchaseUpdates := map[string]interface{}{
+			"subscription_id":     sub.ID,
+			"payment_status":      paymentStatus,
+			"access_status":       "active",
+			"razorpay_payment_id": paymentID,
+			"activated_at":        now,
+		}
+		if err := tx.Model(&models.Purchase{}).Where("payment_id = ?", refreshed.ID).Updates(purchaseUpdates).Error; err != nil {
+			return err
+		}
+
+		refreshed.SubscriptionID = &sub.ID
+		*payment = refreshed
+		return nil
+	})
+}
+
+func ensurePaymentSubscription(tx *gorm.DB, payment *models.Payment) (*models.Subscription, error) {
+	var sub models.Subscription
+	query := tx.Where("plan_code = ?", payment.PlanCode)
+
+	if payment.ProductID != nil {
+		query = query.Where("product_id = ?", *payment.ProductID)
+	} else {
+		query = query.Where("product_id IS NULL")
+	}
+
+	if payment.UserID != nil {
+		query = query.Where("user_id = ?", *payment.UserID)
+	} else {
+		query = query.Where("user_id IS NULL")
+	}
+
+	if payment.InstitutionID != nil {
+		query = query.Where("institution_id = ?", *payment.InstitutionID)
+	} else {
+		query = query.Where("institution_id IS NULL")
+	}
+
+	err := query.Order("created_at desc").First(&sub).Error
+	if err != nil && err != gorm.ErrRecordNotFound {
+		return nil, err
+	}
+
+	if err == gorm.ErrRecordNotFound {
+		sub = models.Subscription{
+			UserID:        payment.UserID,
+			InstitutionID: payment.InstitutionID,
+			ProductID:     payment.ProductID,
+			PlanCode:      payment.PlanCode,
+			Status:        "active",
+		}
+		if err := tx.Create(&sub).Error; err != nil {
+			return nil, err
+		}
+		return &sub, nil
+	}
+
+	sub.Status = "active"
+	if err := tx.Save(&sub).Error; err != nil {
+		return nil, err
+	}
+
+	return &sub, nil
 }
 
 func (h *Handler) handleSubscriptionCancelled(payload map[string]interface{}) {

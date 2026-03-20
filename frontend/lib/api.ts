@@ -276,6 +276,17 @@ export async function createOrder(payload: { plan_code: string; amount: number; 
   }, token);
 }
 
+export async function verifyOrderPayment(payload: {
+  razorpay_payment_id: string;
+  razorpay_order_id: string;
+  razorpay_signature: string;
+}, token: string) {
+  return apiFetch<any>("/api/v1/subscriptions/verify-order-payment", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }, token);
+}
+
 export async function createSubscription(payload: { plan_id: string; total_count: number }, token: string) {
   return apiFetch<any>("/api/v1/subscriptions/create-subscription", {
     method: "POST",
@@ -285,6 +296,14 @@ export async function createSubscription(payload: { plan_id: string; total_count
 
 export async function getMySubscriptions(token: string) {
   return apiFetch<any[]>("/api/v1/subscriptions/me", {}, token);
+}
+
+export async function getMyPurchases(token: string) {
+  return apiFetch<any[]>("/api/v1/subscriptions/purchases/me", { cache: "no-store" }, token);
+}
+
+export async function getMyPayments(token: string) {
+  return apiFetch<any[]>("/api/v1/subscriptions/payments/me", { cache: "no-store" }, token);
 }
 
 export async function getAdminAnalytics(token: string) {

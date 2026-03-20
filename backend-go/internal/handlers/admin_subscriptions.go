@@ -82,10 +82,14 @@ func (h *Handler) ListAllPayments(c *gin.Context) {
 
 	type PaymentOverview struct {
 		models.Payment
-		UserEmail       string `json:"user_email"`
-		UserName        string `json:"user_name"`
-		ProductName     string `json:"product_name"`
-		InstitutionName string `json:"institution_name"`
+		UserEmail          string `json:"user_email"`
+		UserName           string `json:"user_name"`
+		ProductName        string `json:"product_name"`
+		ProductTier        string `json:"product_tier"`
+		InstitutionName    string `json:"institution_name"`
+		SubscriptionStatus string `json:"subscription_status"`
+		PurchaseID         string `json:"purchase_id"`
+		AccessStatus       string `json:"access_status"`
 	}
 
 	enriched := make([]PaymentOverview, 0, len(payments))
@@ -101,8 +105,9 @@ func (h *Handler) ListAllPayments(c *gin.Context) {
 		}
 		if payment.ProductID != nil {
 			var product models.Product
-			if err := h.DB.Select("name").First(&product, "id = ?", *payment.ProductID).Error; err == nil {
+			if err := h.DB.Select("name, tier").First(&product, "id = ?", *payment.ProductID).Error; err == nil {
 				row.ProductName = product.Name
+				row.ProductTier = product.Tier
 			}
 		}
 		if payment.InstitutionID != nil {
@@ -111,11 +116,81 @@ func (h *Handler) ListAllPayments(c *gin.Context) {
 				row.InstitutionName = institution.Name
 			}
 		}
+		if payment.SubscriptionID != nil {
+			var sub models.Subscription
+			if err := h.DB.Select("status").First(&sub, "id = ?", *payment.SubscriptionID).Error; err == nil {
+				row.SubscriptionStatus = sub.Status
+			}
+		}
+		var purchase models.Purchase
+		if err := h.DB.Select("id, access_status").First(&purchase, "payment_id = ?", payment.ID).Error; err == nil {
+			row.PurchaseID = purchase.ID
+			row.AccessStatus = purchase.AccessStatus
+		}
 
 		enriched = append(enriched, row)
 	}
 
 	utils.JSON(c, http.StatusOK, "payments", enriched)
+}
+
+func (h *Handler) ListAllPurchases(c *gin.Context) {
+	accessFilter := c.Query("access_status")
+
+	var purchases []models.Purchase
+	query := h.DB.Order("created_at desc")
+	if accessFilter != "" {
+		query = query.Where("access_status = ?", accessFilter)
+	}
+
+	if err := query.Find(&purchases).Error; err != nil {
+		utils.JSON(c, http.StatusInternalServerError, "failed to fetch purchases", nil)
+		return
+	}
+
+	type PurchaseOverview struct {
+		models.Purchase
+		UserEmail          string `json:"user_email"`
+		UserName           string `json:"user_name"`
+		ProductName        string `json:"product_name"`
+		ProductTier        string `json:"product_tier"`
+		InstitutionName    string `json:"institution_name"`
+		SubscriptionStatus string `json:"subscription_status"`
+	}
+
+	enriched := make([]PurchaseOverview, 0, len(purchases))
+	for _, purchase := range purchases {
+		row := PurchaseOverview{Purchase: purchase}
+		if purchase.UserID != nil {
+			var user models.User
+			if err := h.DB.Select("email, full_name").First(&user, "id = ?", *purchase.UserID).Error; err == nil {
+				row.UserEmail = user.Email
+				row.UserName = user.FullName
+			}
+		}
+		if purchase.ProductID != nil {
+			var product models.Product
+			if err := h.DB.Select("name, tier").First(&product, "id = ?", *purchase.ProductID).Error; err == nil {
+				row.ProductName = product.Name
+				row.ProductTier = product.Tier
+			}
+		}
+		if purchase.InstitutionID != nil {
+			var institution models.Institution
+			if err := h.DB.Select("name").First(&institution, "id = ?", *purchase.InstitutionID).Error; err == nil {
+				row.InstitutionName = institution.Name
+			}
+		}
+		if purchase.SubscriptionID != nil {
+			var sub models.Subscription
+			if err := h.DB.Select("status").First(&sub, "id = ?", *purchase.SubscriptionID).Error; err == nil {
+				row.SubscriptionStatus = sub.Status
+			}
+		}
+		enriched = append(enriched, row)
+	}
+
+	utils.JSON(c, http.StatusOK, "purchases", enriched)
 }
 
 // AdminCreateSubscription - admin manually creates a subscription record

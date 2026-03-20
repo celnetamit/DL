@@ -17,6 +17,27 @@ type Subscription struct {
 	UpdatedAt              time.Time  `json:"updated_at"`
 }
 
+type Purchase struct {
+	ID                string     `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	UserID            *string    `gorm:"type:uuid;index" json:"user_id"`
+	InstitutionID     *string    `gorm:"type:uuid;index" json:"institution_id"`
+	ProductID         *string    `gorm:"type:uuid;index" json:"product_id"`
+	SubscriptionID    *string    `gorm:"type:uuid;index" json:"subscription_id"`
+	PaymentID         *string    `gorm:"type:uuid;index" json:"payment_id"`
+	PlanCode          string     `gorm:"index" json:"plan_code"`
+	PurchaseType      string     `gorm:"not null;default:one_time" json:"purchase_type"`
+	AccessStatus      string     `gorm:"not null;default:pending" json:"access_status"`
+	PaymentStatus     string     `gorm:"not null;default:created" json:"payment_status"`
+	Amount            int        `json:"amount"`
+	Currency          string     `gorm:"default:INR" json:"currency"`
+	ActivatedAt       *time.Time `json:"activated_at"`
+	AccessEndsAt      *time.Time `json:"access_ends_at"`
+	RazorpayOrderID   *string    `json:"razorpay_order_id"`
+	RazorpayPaymentID *string    `json:"razorpay_payment_id"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
+}
+
 type Payment struct {
 	ID                string    `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	UserID            *string   `gorm:"type:uuid" json:"user_id"`
