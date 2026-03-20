@@ -8,9 +8,12 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"lms-backend/internal/config"
+	"lms-backend/internal/utils"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/gin-gonic/gin"
 )
 
@@ -99,6 +102,81 @@ func TestGenerateMaterialRejectsMalformedAIResponse(t *testing.T) {
 
 	if w.Code != http.StatusBadGateway {
 		t.Fatalf("expected 502, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestListAIGenerationLogsReturnsEnrichedRows(t *testing.T) {
+	db, mock := setupSubscriptionsMockDB(t)
+	handler := &Handler{DB: db}
+
+	now := time.Now().UTC()
+	userID := "user-1"
+	courseID := "course-1"
+	moduleID := "module-1"
+	lessonID := "lesson-1"
+
+	mock.ExpectQuery(`SELECT \* FROM "ai_generation_logs" ORDER BY created_at desc LIMIT \$1`).
+		WithArgs(50).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "user_id", "course_id", "module_id", "lesson_id", "provider", "model", "prompt_version",
+			"status", "source_type", "source_url", "requested_title", "error_message", "request_payload", "response_payload", "created_at",
+		}).AddRow(
+			"log-1", userID, courseID, moduleID, lessonID, "gemini", "gemini-1.5-flash", "v2",
+			"success", "text", nil, "Generated Lesson", "", `{}`, `{}`, now,
+		))
+
+	mock.ExpectQuery(`SELECT email, full_name FROM "users" WHERE id = \$1 ORDER BY "users"\."id" LIMIT \$2`).
+		WithArgs(userID, 1).
+		WillReturnRows(sqlmock.NewRows([]string{"email", "full_name"}).AddRow("author@example.com", "Author"))
+	mock.ExpectQuery(`SELECT "title" FROM "lessons" WHERE id = \$1 ORDER BY "lessons"\."id" LIMIT \$2`).
+		WithArgs(lessonID, 1).
+		WillReturnRows(sqlmock.NewRows([]string{"title"}).AddRow("Generated Lesson"))
+	mock.ExpectQuery(`SELECT "title" FROM "modules" WHERE id = \$1 ORDER BY "modules"\."id" LIMIT \$2`).
+		WithArgs(moduleID, 1).
+		WillReturnRows(sqlmock.NewRows([]string{"title"}).AddRow("AI Module"))
+	mock.ExpectQuery(`SELECT "title" FROM "courses" WHERE id = \$1 ORDER BY "courses"\."id" LIMIT \$2`).
+		WithArgs(courseID, 1).
+		WillReturnRows(sqlmock.NewRows([]string{"title"}).AddRow("AI Course"))
+
+	router := gin.New()
+	router.GET("/ai/logs", handler.ListAIGenerationLogs)
+
+	req := httptest.NewRequest(http.MethodGet, "/ai/logs", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp utils.APIResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	rows, err := json.Marshal(resp.Data)
+	if err != nil {
+		t.Fatalf("failed to marshal data: %v", err)
+	}
+
+	var logs []map[string]interface{}
+	if err := json.Unmarshal(rows, &logs); err != nil {
+		t.Fatalf("failed to decode logs payload: %v", err)
+	}
+	if len(logs) != 1 {
+		t.Fatalf("expected 1 ai log row, got %d", len(logs))
+	}
+	if logs[0]["user_email"] != "author@example.com" {
+		t.Fatalf("expected enriched user_email, got %#v", logs[0]["user_email"])
+	}
+	if logs[0]["lesson_title"] != "Generated Lesson" {
+		t.Fatalf("expected enriched lesson_title, got %#v", logs[0]["lesson_title"])
+	}
+	if logs[0]["module_title"] != "AI Module" {
+		t.Fatalf("expected enriched module_title, got %#v", logs[0]["module_title"])
+	}
+	if logs[0]["course_title"] != "AI Course" {
+		t.Fatalf("expected enriched course_title, got %#v", logs[0]["course_title"])
 	}
 }
 
