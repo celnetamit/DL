@@ -4,7 +4,7 @@ This repository follows the architecture described in `lms_architecture.md` with
 
 - `frontend`: Next.js App Router UI
 - `backend-go`: Golang (Gin) API for auth, users, subscriptions
-- `ai-engine-py`: Python FastAPI microservice for AI content generation
+- `ai-engine-py`: Python FastAPI microservice for Gemini-powered content generation
 
 ## Quick Start (Local)
 
@@ -47,7 +47,7 @@ npm run dev
 ## Notes
 
 - Razorpay webhooks are verified using `RAZORPAY_WEBHOOK_SECRET`.
-- The AI engine can be called directly by the frontend or routed through the backend.
+- The AI engine uses the Gemini API via `GEMINI_API_KEY` and can be called directly by the frontend or routed through the backend.
 - All sensitive credentials are kept in `.env` files.
 - For production, set `APP_ENV=production`, `GIN_MODE=release`, a strong `JWT_SECRET`, explicit `APP_BASE_URL`, `NEXT_PUBLIC_API_URL`, and `TRUSTED_PROXIES`.
 - The backend now fails fast on insecure production config, pings the database in `/health`, and runs with HTTP server timeouts suitable for deployment behind a reverse proxy.

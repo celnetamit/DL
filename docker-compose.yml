@@ -52,7 +52,8 @@ services:
       context: ./ai-engine-py
       dockerfile: Dockerfile
     environment:
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash}
     expose:
       - "8000"
     healthcheck:

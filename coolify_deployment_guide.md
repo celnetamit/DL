@@ -48,7 +48,8 @@ RAZORPAY_KEY_SECRET=your_rzp_live_secret
 RAZORPAY_WEBHOOK_SECRET=your_rzp_webhook_secret
 
 # AI
-ANTHROPIC_API_KEY=sk-ant-yourkey
+GEMINI_API_KEY=your-gemini-api-key
+GEMINI_MODEL=gemini-1.5-flash
 ```
 *(Save the variables)*.
 
