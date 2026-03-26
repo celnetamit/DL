@@ -7,8 +7,16 @@ import { useAuth } from "@/lib/auth";
 
 const NAV_LINKS = [
   { name: "Home", href: "/" },
+  { name: "About", href: "/about" },
+  { name: "Domains", href: "/domains" },
   { name: "Pricing", href: "/pricing" },
   { name: "Contact", href: "/contact" },
+];
+
+const INFO_LINKS = [
+  { name: "For Agencies", href: "/information/for-agencies" },
+  { name: "For Institutions", href: "/information/for-institutions" },
+  { name: "For Individuals", href: "/information/for-individuals" },
 ];
 
 export default function Navbar() {
@@ -62,6 +70,35 @@ export default function Navbar() {
                 {link.name}
               </Link>
             ))}
+            <div className="relative group">
+              <button
+                type="button"
+                className={`rounded-full px-5 py-2 text-xs font-bold uppercase tracking-widest transition-all inline-flex items-center gap-2 ${
+                  pathname.startsWith("/information")
+                    ? "bg-ember text-midnight shadow-md shadow-ember/20"
+                    : "text-dune/40 hover:text-dune hover:bg-dune/5"
+                }`}
+                aria-haspopup="menu"
+              >
+                Information
+                <span className="text-[10px] opacity-70">▾</span>
+              </button>
+              <div className="absolute left-0 top-full mt-2 w-56 rounded-2xl border border-dune/10 bg-midnight/95 p-2 shadow-xl shadow-midnight/50 opacity-0 pointer-events-none translate-y-2 transition-all duration-200 group-hover:opacity-100 group-hover:pointer-events-auto group-hover:translate-y-0 group-focus-within:opacity-100 group-focus-within:pointer-events-auto">
+                {INFO_LINKS.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className={`block rounded-xl px-4 py-3 text-xs font-bold uppercase tracking-widest transition-all ${
+                      pathname === link.href
+                        ? "bg-ember text-midnight"
+                        : "text-dune/60 hover:text-dune hover:bg-dune/10"
+                    }`}
+                  >
+                    {link.name}
+                  </Link>
+                ))}
+              </div>
+            </div>
           </div>
 
           <div className="h-6 w-px bg-dune/10 mx-2"></div>
@@ -127,6 +164,23 @@ export default function Navbar() {
                 {link.name}
               </Link>
             ))}
+          </div>
+
+          <div className="flex flex-col items-center gap-4">
+            <p className="text-[10px] uppercase tracking-[0.3em] text-dune/40">Information</p>
+            <div className="flex flex-col items-center gap-3">
+              {INFO_LINKS.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`text-lg font-[var(--font-space)] font-semibold transition-all ${
+                    pathname === link.href ? "text-ember scale-105" : "text-dune/40 hover:text-dune hover:scale-105"
+                  }`}
+                >
+                  {link.name}
+                </Link>
+              ))}
+            </div>
           </div>
           
           <div className="w-24 h-px bg-dune/10"></div>
