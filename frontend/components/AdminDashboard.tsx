@@ -140,10 +140,14 @@ type Item = {
 
 function emptyForm(fields: FieldDef[]) {
   return fields.reduce<Record<string, string>>((acc, field) => {
-    acc[field.name] = "";
+    if (field.name === "status") acc[field.name] = "Draft";
+    else if (field.name === "access_type") acc[field.name] = "Open Access";
+    else acc[field.name] = "";
     return acc;
   }, {});
 }
+
+const ESSENTIAL_FIELD_NAMES = new Set(["title", "domain", "subdomain", "source_url", "status", "access_type"]);
 
 export default function AdminDashboard() {
   const { token, loading: authLoading } = useAuth();
@@ -197,6 +201,11 @@ export default function AdminDashboard() {
   const [statusFilter, setStatusFilter] = useState("");
   const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [compactView, setCompactView] = useState(true);
+  const [showAdvancedFields, setShowAdvancedFields] = useState(false);
+  const [quickAddStep, setQuickAddStep] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [inlineEdits, setInlineEdits] = useState<Record<string, Partial<Item>>>({});
   const [analyticsLoadError, setAnalyticsLoadError] = useState<string | null>(null);
   const [domainLoadError, setDomainLoadError] = useState<string | null>(null);
   const itemsPerPage = 20;
@@ -211,6 +220,28 @@ export default function AdminDashboard() {
 
   const category = useMemo(() => CATEGORIES.find((item) => item.key === activeKey)!, [activeKey]);
   const [formState, setFormState] = useState<Record<string, string>>(() => emptyForm(category.fields));
+  const displayedFields = useMemo(() => {
+    if (!compactView) return category.fields;
+    return category.fields.filter((field) => ESSENTIAL_FIELD_NAMES.has(field.name));
+  }, [category.fields, compactView]);
+  const essentialFields = useMemo(
+    () => category.fields.filter((field) => ESSENTIAL_FIELD_NAMES.has(field.name)),
+    [category.fields],
+  );
+  const advancedFields = useMemo(
+    () => category.fields.filter((field) => !ESSENTIAL_FIELD_NAMES.has(field.name)),
+    [category.fields],
+  );
+  const quickStepFields = useMemo(() => {
+    if (editingId) return essentialFields;
+    const stepMap: Record<number, string[]> = {
+      1: ["title", "source_url"],
+      2: ["domain", "subdomain"],
+      3: ["status", "access_type"],
+    };
+    const current = stepMap[quickAddStep] || [];
+    return essentialFields.filter((field) => current.includes(field.name));
+  }, [editingId, essentialFields, quickAddStep]);
 
   const currentItems = itemsByCategory[category.key] || [];
   const filteredItems = currentItems.filter((item) => {
@@ -285,6 +316,8 @@ export default function AdminDashboard() {
     setEditingId(null);
     setErrorMsg(null);
     setIsModalOpen(false);
+    setShowAdvancedFields(false);
+    setQuickAddStep(1);
     setSearchTerm("");
     setStatusFilter("");
   };
@@ -292,6 +325,8 @@ export default function AdminDashboard() {
   const handleCategoryChange = (key: string) => {
     setActiveKey(key);
     setCurrentPage(1);
+    setSelectedIds([]);
+    setInlineEdits({});
     const nextCategory = CATEGORIES.find((item) => item.key === key)!;
     setFormState(emptyForm(nextCategory.fields));
     setEditingId(null);
@@ -301,6 +336,63 @@ export default function AdminDashboard() {
 
   const handleFieldChange = (name: string, value: string) => {
     setFormState((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const buildPayload = (item: Item, overrides: Record<string, any> = {}) => {
+    const merged = { ...item, ...overrides };
+    const { title, status, source_url, id: _id, ...metadata } = merged;
+    return {
+      type: category.key,
+      title: title || "Untitled",
+      status: status || "Draft",
+      source_url: source_url || "",
+      metadata,
+    };
+  };
+
+  const handleInlineChange = (item: Item, name: string, value: string) => {
+    setInlineEdits((prev) => {
+      const next = { ...(prev[item.id] || {}), [name]: value };
+      if (name === "domain") {
+        next.subdomain = "";
+      }
+      return { ...prev, [item.id]: next };
+    });
+  };
+
+  const handleInlineSave = async (item: Item) => {
+    if (!token || !inlineEdits[item.id]) return;
+    try {
+      await updateContent(item.id, buildPayload(item, inlineEdits[item.id] as Record<string, any>), token);
+      await loadData(category.key);
+      setInlineEdits((prev) => {
+        const { [item.id]: _drop, ...rest } = prev;
+        return rest;
+      });
+      setToast({ message: "Inline changes saved.", tone: "success" });
+    } catch (err) {
+      console.error(err);
+      setToast({ message: "Unable to save inline changes.", tone: "error" });
+    }
+  };
+
+  const handleBulkStatusUpdate = async (status: "Published" | "Archived") => {
+    if (!token || selectedIds.length === 0) return;
+    setLoading(true);
+    try {
+      const selectedItems = currentItems.filter((item) => selectedIds.includes(item.id));
+      await Promise.all(
+        selectedItems.map((item) => updateContent(item.id, buildPayload(item, { status }), token)),
+      );
+      await loadData(category.key);
+      setSelectedIds([]);
+      setToast({ message: `Bulk updated ${selectedItems.length} records to ${status}.`, tone: "success" });
+    } catch (err) {
+      console.error(err);
+      setToast({ message: "Bulk update failed.", tone: "error" });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSave = async () => {
@@ -793,6 +885,28 @@ export default function AdminDashboard() {
                 <button onClick={handleExport} className="rounded-full bg-dune/10 px-3 py-1 text-xs hover:bg-dune/20 transition">
                   Export CSV
                 </button>
+                <button
+                  onClick={() => setCompactView((prev) => !prev)}
+                  className="rounded-full bg-dune/10 px-3 py-1 text-xs hover:bg-dune/20 transition"
+                >
+                  {compactView ? "Detailed View" : "Simple View"}
+                </button>
+                {selectedIds.length > 0 && (
+                  <>
+                    <button
+                      onClick={() => handleBulkStatusUpdate("Published")}
+                      className="rounded-full bg-moss/20 px-3 py-1 text-xs text-moss hover:bg-moss/30 transition"
+                    >
+                      Bulk Publish ({selectedIds.length})
+                    </button>
+                    <button
+                      onClick={() => handleBulkStatusUpdate("Archived")}
+                      className="rounded-full bg-ember/20 px-3 py-1 text-xs text-ember hover:bg-ember/30 transition"
+                    >
+                      Bulk Archive ({selectedIds.length})
+                    </button>
+                  </>
+                )}
                 <button onClick={() => { resetForm(); setIsModalOpen(true); }} className="rounded-full bg-ember px-4 py-1.5 text-xs text-midnight font-bold shadow-glow hover:bg-ember/90 transition">
                   + Add New
                 </button>
@@ -802,8 +916,22 @@ export default function AdminDashboard() {
               <table className="w-full text-left text-sm whitespace-nowrap">
                 <thead className="bg-dune/5 text-dune/60 uppercase tracking-widest text-[10px]">
                   <tr>
+                    <th className="px-4 py-3 font-semibold rounded-tl-xl rounded-bl-xl">
+                      <input
+                        type="checkbox"
+                        checked={paginatedItems.length > 0 && paginatedItems.every((item) => selectedIds.includes(item.id))}
+                        onChange={(event) => {
+                          const pageIds = paginatedItems.map((item) => item.id);
+                          if (event.target.checked) {
+                            setSelectedIds((prev) => Array.from(new Set([...prev, ...pageIds])));
+                          } else {
+                            setSelectedIds((prev) => prev.filter((id) => !pageIds.includes(id)));
+                          }
+                        }}
+                      />
+                    </th>
                     <th className="px-4 py-3 font-semibold rounded-tl-xl rounded-bl-xl">ID / Title</th>
-                    {category.fields.map(field => (
+                    {displayedFields.map(field => (
                       <th key={field.name} className="px-4 py-3 font-semibold">{field.label}</th>
                     ))}
                     <th className="px-4 py-3 font-semibold text-right rounded-tr-xl rounded-br-xl">Actions</th>
@@ -812,33 +940,67 @@ export default function AdminDashboard() {
                 <tbody className="divide-y divide-dune/10">
                   {currentItems.length === 0 && !loading && (
                     <tr>
-                      <td colSpan={10} className="px-4 py-8 text-center text-dune/60">
+                      <td colSpan={displayedFields.length + 3} className="px-4 py-8 text-center text-dune/60">
                         No records yet. Add your first {category.label.toLowerCase()} entry.
                       </td>
                     </tr>
                   )}
                   {filteredItems.length === 0 && currentItems.length > 0 && !loading && (
                     <tr>
-                      <td colSpan={10} className="px-4 py-8 text-center text-dune/60">
+                      <td colSpan={displayedFields.length + 3} className="px-4 py-8 text-center text-dune/60">
                         No records match the current search or status filters.
                       </td>
                     </tr>
                   )}
                   {paginatedItems.map((item) => (
                     <tr key={item.id} className="hover:bg-dune/5 transition-colors">
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.includes(item.id)}
+                          onChange={(event) => {
+                            setSelectedIds((prev) =>
+                              event.target.checked ? [...prev, item.id] : prev.filter((id) => id !== item.id),
+                            );
+                          }}
+                        />
+                      </td>
                       <td className="px-4 py-3 max-w-[200px] truncate">
                         <p className="font-semibold text-dune">{item.title || "Untitled"}</p>
                         <p className="text-[10px] text-dune/50 truncate" title={item.id}>ID: {item.id}</p>
                       </td>
-                      {category.fields.map((field) => (
+                      {displayedFields.map((field) => (
                         <td key={field.name} className="px-4 py-3 max-w-[150px] truncate" title={item[field.name]}>
-                          <span className="text-dune/80 text-xs">
-                            {(field.name === "subdomain" && !item.domain) ? "-" : (item[field.name] || "-")}
-                          </span>
+                          {(field.name === "status" || field.name === "domain" || field.name === "subdomain") ? (
+                            <select
+                              className="rounded border border-dune/20 bg-midnight/40 px-2 py-1 text-xs text-dune outline-none"
+                              value={(inlineEdits[item.id]?.[field.name] as string) ?? item[field.name] ?? ""}
+                              onChange={(event) => handleInlineChange(item, field.name, event.target.value)}
+                            >
+                              <option value="">Select</option>
+                              {field.name === "status" && ["Draft", "Published", "Archived"].map((option) => (
+                                <option key={option} value={option}>{option}</option>
+                              ))}
+                              {field.name === "domain" && globalDomains.map((dom) => (
+                                <option key={dom.id} value={dom.name}>{dom.name}</option>
+                              ))}
+                              {field.name === "subdomain" &&
+                                (globalDomains.find((d) => d.name === ((inlineEdits[item.id]?.domain as string) ?? item.domain))?.subdomains || []).map((sub: any) => (
+                                  <option key={sub.id} value={sub.name}>{sub.name}</option>
+                                ))}
+                            </select>
+                          ) : (
+                            <span className="text-dune/80 text-xs">
+                              {(field.name === "subdomain" && !item.domain) ? "-" : (item[field.name] || "-")}
+                            </span>
+                          )}
                         </td>
                       ))}
                       <td className="px-4 py-3 text-right">
                         <div className="flex justify-end gap-2">
+                          {inlineEdits[item.id] && (
+                            <button onClick={() => handleInlineSave(item)} className="rounded bg-moss/20 text-moss px-2 py-1 text-xs hover:bg-moss/30 transition">Save</button>
+                          )}
                           <button onClick={() => handleEdit(item)} className="rounded bg-dune/10 px-2 py-1 text-xs hover:bg-dune/20 transition">Edit</button>
                           {pendingDeleteId === item.id ? (
                             <>
@@ -906,8 +1068,28 @@ export default function AdminDashboard() {
               </div>
             )}
 
+            {!editingId && (
+              <div className="mb-6 rounded-2xl border border-dune/10 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-dune/60 font-semibold">Quick Add Wizard</p>
+                <div className="mt-3 grid grid-cols-3 gap-2 text-[10px] uppercase tracking-widest">
+                  {["Basic", "Domain Mapping", "Access"].map((label, index) => {
+                    const step = index + 1;
+                    const active = quickAddStep === step;
+                    return (
+                      <div
+                        key={label}
+                        className={`rounded-full px-3 py-2 text-center ${active ? "bg-ember text-midnight font-bold" : "bg-dune/10 text-dune/60"}`}
+                      >
+                        {step}. {label}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div className="grid gap-5">
-              {category.fields.map((field) => {
+              {quickStepFields.map((field) => {
                 if (field.name === "subdomain" && !formState.domain) return null;
                 return (
                 <label key={field.name} className="space-y-2 text-sm text-dune/80">
@@ -950,37 +1132,82 @@ export default function AdminDashboard() {
                   )}
                 </label>
               )})}
-              <label className="space-y-2 text-sm text-dune/80">
-                <span className="uppercase tracking-[0.2em] text-xs text-dune/60 font-semibold">Base Title *</span>
-                <input
-                  className="w-full rounded-xl bg-midnight/60 px-4 py-3 text-sm text-dune border border-dune/20 focus:border-ember outline-none transition-colors"
-                  type="text"
-                  value={formState.title || ""}
-                  onChange={(event) => handleFieldChange("title", event.target.value)}
-                  placeholder="Internal Title (Required)"
-                />
-              </label>
-              {(category.key === "documentaries" || category.key === "podcast_episodes" || category.key === "journal_articles" || category.key === "virtual_labs" || category.key === "research_papers") && (
-                <label className="space-y-2 text-sm text-dune/80">
-                  <span className="uppercase tracking-[0.2em] text-xs text-dune/60 font-semibold">Source URL</span>
-                  <input
-                    className="w-full rounded-xl bg-midnight/60 px-4 py-3 text-sm text-dune border border-dune/20 focus:border-ember outline-none transition-colors"
-                    type="url"
-                    value={formState.source_url || ""}
-                    onChange={(event) => handleFieldChange("source_url", event.target.value)}
-                    placeholder="https://"
-                  />
-                </label>
+
+              {advancedFields.length > 0 && (
+                <div className="rounded-2xl border border-dune/10 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs uppercase tracking-[0.2em] text-dune/60 font-semibold">Advanced Metadata</p>
+                    <button
+                      type="button"
+                      onClick={() => setShowAdvancedFields((prev) => !prev)}
+                      className="rounded-full bg-dune/10 px-3 py-1 text-[10px] uppercase tracking-widest hover:bg-dune/20"
+                    >
+                      {showAdvancedFields ? "Hide" : "Show"}
+                    </button>
+                  </div>
+                  {showAdvancedFields && (
+                    <div className="mt-4 grid gap-5">
+                      {advancedFields.map((field) => (
+                        <label key={field.name} className="space-y-2 text-sm text-dune/80">
+                          <span className="uppercase tracking-[0.2em] text-xs text-dune/60 font-semibold">{field.label}</span>
+                          {field.type === "select" ? (
+                            <select
+                              className="w-full rounded-xl bg-midnight/60 px-4 py-3 text-sm text-dune border border-dune/20 focus:border-ember outline-none transition-colors"
+                              value={formState[field.name] || ""}
+                              onChange={(event) => handleFieldChange(field.name, event.target.value)}
+                            >
+                              <option value="">Select an option</option>
+                              {field.options?.map((option) => (
+                                <option key={option} value={option}>
+                                  {option}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              className="w-full rounded-xl bg-midnight/60 px-4 py-3 text-sm text-dune border border-dune/20 focus:border-ember outline-none transition-colors"
+                              type={field.type}
+                              value={formState[field.name] || ""}
+                              onChange={(event) => handleFieldChange(field.name, event.target.value)}
+                              placeholder={`Enter ${field.label.toLowerCase()}...`}
+                            />
+                          )}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 
-            <button
-              onClick={handleSave}
-              disabled={loading}
-              className="mt-8 w-full rounded-xl bg-ember px-4 py-4 text-sm font-bold text-midnight shadow-glow hover:opacity-90 transition disabled:opacity-50"
-            >
-              {loading ? "Saving Record..." : "Save Record"}
-            </button>
+            <div className="mt-8 flex gap-3">
+              {!editingId && quickAddStep > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setQuickAddStep((prev) => Math.max(1, prev - 1))}
+                  className="w-full rounded-xl border border-dune/20 px-4 py-4 text-sm font-bold text-dune hover:bg-dune/10 transition"
+                >
+                  Back
+                </button>
+              )}
+              {!editingId && quickAddStep < 3 ? (
+                <button
+                  type="button"
+                  onClick={() => setQuickAddStep((prev) => Math.min(3, prev + 1))}
+                  className="w-full rounded-xl bg-ember px-4 py-4 text-sm font-bold text-midnight shadow-glow hover:opacity-90 transition"
+                >
+                  Next Step
+                </button>
+              ) : (
+                <button
+                  onClick={handleSave}
+                  disabled={loading}
+                  className="w-full rounded-xl bg-ember px-4 py-4 text-sm font-bold text-midnight shadow-glow hover:opacity-90 transition disabled:opacity-50"
+                >
+                  {loading ? "Saving Record..." : "Save Record"}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}

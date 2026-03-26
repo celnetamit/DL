@@ -162,6 +162,7 @@ func main() {
 		api.GET("/products", handler.ListProducts)
 		api.GET("/products/:id/stats", handler.GetProductStats)
 		api.GET("/products/:id/contents", handler.GetProductContents)
+		api.GET("/public/domains", handler.ListDomains)
 
 		protected := api.Group("")
 		protected.Use(middleware.JWTAuth(cfg.JwtSecret))

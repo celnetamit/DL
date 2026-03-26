@@ -45,7 +45,7 @@ export default function HomeClient() {
       try {
         const [prods, domainData] = await Promise.all([
           apiFetch<any[]>("/api/v1/products", { cache: "no-store" }),
-          apiFetch<Domain[]>("/api/v1/domains", { cache: "no-store" }),
+          apiFetch<Domain[]>("/api/v1/public/domains", { cache: "no-store" }),
         ]);
         if (!prods) return;
 

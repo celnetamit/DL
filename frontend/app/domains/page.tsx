@@ -39,7 +39,7 @@ export default function DomainsPage() {
     const loadData = async () => {
       try {
         const [domainData, productData] = await Promise.all([
-          apiFetch<Domain[]>("/api/v1/domains", { cache: "no-store" }),
+          apiFetch<Domain[]>("/api/v1/public/domains", { cache: "no-store" }),
           apiFetch<Product[]>("/api/v1/products", { cache: "no-store" }),
         ]);
         setDomains(domainData || []);

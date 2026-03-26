@@ -1,0 +1,140 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - navigation "Main Navigation" [ref=e2]:
+    - generic [ref=e3]:
+      - link "Digital Library Home" [ref=e4] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e5]: DL
+        - generic [ref=e6]: DigitalLibrary
+      - generic [ref=e7]:
+        - generic [ref=e8]:
+          - link "Home" [ref=e9] [cursor=pointer]:
+            - /url: /
+          - link "About" [ref=e10] [cursor=pointer]:
+            - /url: /about
+          - link "Domains" [ref=e11] [cursor=pointer]:
+            - /url: /domains
+          - link "Pricing" [ref=e12] [cursor=pointer]:
+            - /url: /pricing
+          - link "Contact" [ref=e13] [cursor=pointer]:
+            - /url: /contact
+          - generic [ref=e14]:
+            - button "Information ▾" [ref=e15] [cursor=pointer]:
+              - text: Information
+              - generic [ref=e16]: ▾
+            - generic:
+              - link "For Agencies":
+                - /url: /information/for-agencies
+              - link "For Institutions":
+                - /url: /information/for-institutions
+              - link "For Individuals":
+                - /url: /information/for-individuals
+        - generic [ref=e18]:
+          - generic [ref=e19]:
+            - paragraph [ref=e20]: Welcome back
+            - paragraph [ref=e21]: User
+          - button "Sign Out" [ref=e22] [cursor=pointer]
+  - main [ref=e24]:
+    - generic [ref=e25]:
+      - generic [ref=e26]:
+        - paragraph [ref=e27]: Explore Content
+        - heading "Product Catalog" [level=1] [ref=e28]
+        - paragraph [ref=e29]: Purchase full domains, explicit subdomains, or individual publications to build out your library.
+      - heading "Full Domains & Bundles" [level=2] [ref=e30]
+      - generic [ref=e32]:
+        - paragraph [ref=e33]: bundle
+        - heading "Research Pack" [level=3] [ref=e34]
+        - paragraph [ref=e35]: ₹999
+        - paragraph [ref=e36]: Includes 12 items
+        - paragraph [ref=e37]: Curated research library bundle
+        - button "Purchase" [ref=e38] [cursor=pointer]
+      - generic [ref=e40]:
+        - generic [ref=e41]:
+          - paragraph [ref=e42]: Institutional Buying
+          - heading "Need an invoice, quote, or team purchase workflow?" [level=2] [ref=e43]
+          - paragraph [ref=e44]: Submit your purchase request here. We will create a lead in our CRM/ERP, review the product mix you need, and come back with the right commercial and access setup for your institution.
+        - generic [ref=e45]:
+          - textbox "Full name" [ref=e46]
+          - textbox "Work email" [ref=e47]: buyer@example.com
+          - generic [ref=e48]:
+            - textbox "Phone number" [ref=e49]
+            - textbox "Institution name" [ref=e50]
+          - combobox [ref=e51]:
+            - option "Select a product of interest" [selected]
+            - option "Research Pack (bundle)"
+          - textbox "Tell us what you want to purchase, seat count, billing needs, or timeline." [ref=e52]
+          - button "Submit Purchase Request" [ref=e53] [cursor=pointer]
+  - generic [ref=e55]:
+    - generic [ref=e58]:
+      - generic [ref=e59]:
+        - img [ref=e61]
+        - heading "Your Privacy Matters" [level=4] [ref=e64]
+      - paragraph [ref=e65]:
+        - text: We use essential cookies to ensure our platform functions securely. By continuing, you agree to our
+        - link "Privacy Policy" [ref=e66] [cursor=pointer]:
+          - /url: /privacy
+        - text: pursuant to the DPDP Act 2023.
+    - generic [ref=e67]:
+      - link "Learn More" [ref=e68] [cursor=pointer]:
+        - /url: /cookies
+        - img [ref=e69]
+        - text: Learn More
+      - button "Accept & Continue" [ref=e71] [cursor=pointer]
+  - contentinfo [ref=e72]:
+    - generic [ref=e73]:
+      - generic [ref=e74]:
+        - generic [ref=e75]:
+          - link "DL DigitalLibrary" [ref=e76] [cursor=pointer]:
+            - /url: /
+            - generic [ref=e77]: DL
+            - generic [ref=e78]: DigitalLibrary
+          - paragraph [ref=e79]: Advanced AI-powered LMS platform for journals, research, and collaborative learning.
+        - generic [ref=e80]:
+          - heading "Platform" [level=4] [ref=e81]
+          - list [ref=e82]:
+            - listitem [ref=e83]:
+              - link "Home" [ref=e84] [cursor=pointer]:
+                - /url: /
+            - listitem [ref=e85]:
+              - link "Pricing" [ref=e86] [cursor=pointer]:
+                - /url: /pricing
+            - listitem [ref=e87]:
+              - link "Dashboard" [ref=e88] [cursor=pointer]:
+                - /url: /dashboard
+            - listitem [ref=e89]:
+              - link "Admin Settings" [ref=e90] [cursor=pointer]:
+                - /url: /admin
+        - generic [ref=e91]:
+          - heading "Legal" [level=4] [ref=e92]
+          - list [ref=e93]:
+            - listitem [ref=e94]:
+              - link "Privacy Policy" [ref=e95] [cursor=pointer]:
+                - /url: /privacy
+            - listitem [ref=e96]:
+              - link "Terms & Conditions" [ref=e97] [cursor=pointer]:
+                - /url: /terms
+            - listitem [ref=e98]:
+              - link "Disclaimer" [ref=e99] [cursor=pointer]:
+                - /url: /disclaimer
+            - listitem [ref=e100]:
+              - link "Cookies Policy" [ref=e101] [cursor=pointer]:
+                - /url: /cookies
+        - generic [ref=e102]:
+          - heading "Support" [level=4] [ref=e103]
+          - list [ref=e104]:
+            - listitem [ref=e105]:
+              - link "Contact Us" [ref=e106] [cursor=pointer]:
+                - /url: /contact
+            - listitem [ref=e107]:
+              - link "Payment Policy" [ref=e108] [cursor=pointer]:
+                - /url: /payment-policy
+            - listitem [ref=e109]:
+              - link "Consent" [ref=e110] [cursor=pointer]:
+                - /url: /consent
+      - generic [ref=e111]:
+        - paragraph [ref=e112]: © 2026 Aether LMS. All rights reserved.
+        - generic [ref=e114]: Powering the Future of Education
+  - alert [ref=e115]
+```
