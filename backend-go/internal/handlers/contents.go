@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
+	"strings"
 
 	"lms-backend/internal/models"
 	"lms-backend/internal/utils"
@@ -127,5 +129,60 @@ func (h *Handler) syncContentProduct(contentID string) error {
 	// Content is no longer treated as a direct "Product".
 	// We simply ensure no stray auto-generated product exists for this content.
 	h.DB.Unscoped().Delete(&models.Product{}, "content_id = ?", contentID)
+	h.syncContentDomainLinks(contentID)
 	return nil
+}
+
+func (h *Handler) syncContentDomainLinks(contentID string) error {
+	var content models.Content
+	if err := h.DB.First(&content, "id = ?", contentID).Error; err != nil {
+		return err
+	}
+
+	if err := h.DB.Where("content_id = ?", contentID).Delete(&models.ContentDomainLink{}).Error; err != nil {
+		return err
+	}
+
+	if len(content.Metadata) == 0 {
+		return nil
+	}
+
+	var metadata map[string]any
+	if err := json.Unmarshal(content.Metadata, &metadata); err != nil {
+		return nil
+	}
+
+	domainName := normalizeMetadataText(metadata["domain"])
+	if domainName == "" {
+		return nil
+	}
+
+	var domain models.Domain
+	if err := h.DB.Where("LOWER(name) = ?", strings.ToLower(domainName)).First(&domain).Error; err != nil {
+		return nil
+	}
+
+	var subdomainID *string
+	subdomainName := normalizeMetadataText(metadata["subdomain"])
+	if subdomainName != "" {
+		var subdomain models.Subdomain
+		if err := h.DB.Where("domain_id = ? AND LOWER(name) = ?", domain.ID, strings.ToLower(subdomainName)).First(&subdomain).Error; err == nil {
+			subdomainID = &subdomain.ID
+		}
+	}
+
+	link := models.ContentDomainLink{
+		ContentID:   contentID,
+		DomainID:    domain.ID,
+		SubdomainID: subdomainID,
+	}
+	return h.DB.Create(&link).Error
+}
+
+func normalizeMetadataText(value any) string {
+	text, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(text)
 }

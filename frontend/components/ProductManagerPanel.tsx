@@ -33,7 +33,20 @@ type Product = {
   subdomain_id?: string;
   content_id?: string;
   bundle_domain_ids: string[];
+  content_ids?: string[];
+  domain_ids?: string[];
   status: string;
+};
+
+const EMPTY_PRODUCT_FORM: Partial<Product> = {
+  tier: "domain",
+  currency: "INR",
+  price: 0,
+  status: "active",
+  content_types: [],
+  bundle_domain_ids: [],
+  content_ids: [],
+  domain_ids: [],
 };
 
 export default function ProductManagerPanel() {
@@ -43,14 +56,7 @@ export default function ProductManagerPanel() {
   const [contents, setContents] = useState<Content[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [form, setForm] = useState<Partial<Product>>({
-    tier: "domain",
-    currency: "INR",
-    price: 0,
-    status: "active",
-    content_types: [],
-    bundle_domain_ids: [],
-  });
+  const [form, setForm] = useState<Partial<Product>>(EMPTY_PRODUCT_FORM);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
@@ -78,13 +84,46 @@ export default function ProductManagerPanel() {
     fetchData();
   }, [token]);
 
+  const validateForm = () => {
+    if (!form.name?.trim()) return "Product name is required.";
+    if (Number(form.price || 0) < 0) return "Product price cannot be negative.";
+
+    const contentIds = form.content_ids || (form.content_id ? [form.content_id] : []);
+    const domainIds = form.domain_ids || form.bundle_domain_ids || [];
+
+    switch (form.tier) {
+      case "content":
+        if (contentIds.length !== 1) return "Content products must include exactly one linked content item.";
+        return null;
+      case "domain":
+        if (!form.domain_id) return "Domain products must include a linked domain.";
+        return null;
+      case "subdomain":
+        if (!form.domain_id) return "Subdomain products must include a parent domain.";
+        if (!form.subdomain_id) return "Subdomain products must include a linked subdomain.";
+        return null;
+      case "bundle":
+        if (domainIds.length === 0) return "Bundle products must include at least one linked domain.";
+        return null;
+      default:
+        return "Select a valid product tier.";
+    }
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!token) return;
+    const validationError = validateForm();
+    if (validationError) {
+      setToast({ message: validationError, tone: "error" });
+      return;
+    }
     const payload = {
       ...form,
       price: parseFloat(form.price as any) || 0,
       content_types: form.content_types || [],
+      content_ids: form.content_ids || (form.content_id ? [form.content_id] : []),
+      domain_ids: form.domain_ids || form.bundle_domain_ids || [],
     };
 
     try {
@@ -93,7 +132,7 @@ export default function ProductManagerPanel() {
       } else {
         await apiFetch("/api/v1/products", { method: "POST", body: JSON.stringify(payload) }, token);
       }
-      setForm({ tier: "domain", currency: "INR", price: 0, status: "active", content_types: [], bundle_domain_ids: [] });
+      setForm(EMPTY_PRODUCT_FORM);
       setEditingId(null);
       fetchData();
       setToast({ message: editingId ? "Product updated successfully." : "Product created successfully.", tone: "success" });
@@ -118,7 +157,13 @@ export default function ProductManagerPanel() {
 
   const handleEdit = (prod: Product) => {
     setEditingId(prod.id);
-    setForm({ ...prod, content_types: prod.content_types || [] });
+    setForm({
+      ...prod,
+      content_types: prod.content_types || [],
+      content_ids: prod.content_ids || (prod.content_id ? [prod.content_id] : []),
+      domain_ids: prod.domain_ids || prod.bundle_domain_ids || [],
+      bundle_domain_ids: prod.bundle_domain_ids || prod.domain_ids || [],
+    });
   };
 
   const toggleContentType = (val: string) => {
@@ -135,6 +180,7 @@ export default function ProductManagerPanel() {
 
   const selectedDomainObj = domains.find((d) => d.id === form.domain_id);
   const activeSubdomains = selectedDomainObj ? selectedDomainObj.subdomains : [];
+  const formValidationMessage = validateForm();
 
   return (
     <div className="grid lg:grid-cols-[1fr_340px] gap-6 items-start min-w-0">
@@ -259,6 +305,9 @@ export default function ProductManagerPanel() {
                   domain_id: undefined,
                   subdomain_id: undefined,
                   content_id: undefined,
+                  content_ids: [],
+                  domain_ids: [],
+                  bundle_domain_ids: [],
                   content_types: [],
                 })
               }
@@ -269,6 +318,13 @@ export default function ProductManagerPanel() {
               <option value="bundle">Multi-Domain Bundle</option>
             </select>
           </label>
+
+          <div className="rounded-xl border border-dune/15 bg-dune/5 p-3 text-xs text-dune/70">
+            {form.tier === "content" && "Content tier: link exactly one content item."}
+            {form.tier === "domain" && "Domain tier: link one domain. Content type filters are optional."}
+            {form.tier === "subdomain" && "Subdomain tier: link a parent domain and one subdomain."}
+            {form.tier === "bundle" && "Bundle tier: link one or more domains. Do not mix direct content or subdomain targeting."}
+          </div>
 
           {/* ── Content-Type Module Selector (shown for domain/subdomain/bundle) ── */}
           {(form.tier === "domain" || form.tier === "subdomain" || form.tier === "bundle") && (
@@ -360,8 +416,14 @@ export default function ProductManagerPanel() {
               <select
                 required
                 className="w-full rounded border border-ember/40 bg-midnight px-3 py-1.5 text-xs text-dune"
-                value={form.content_id || ""}
-                onChange={(e) => setForm({ ...form, content_id: e.target.value })}
+                value={(form.content_ids && form.content_ids[0]) || form.content_id || ""}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    content_id: e.target.value,
+                    content_ids: e.target.value ? [e.target.value] : [],
+                  })
+                }
               >
                 <option value="">-- Choose Explicit Content Item --</option>
                 {contents.map((c) => (
@@ -381,10 +443,10 @@ export default function ProductManagerPanel() {
                 multiple
                 required
                 className="w-full h-32 rounded border border-ember/40 bg-midnight px-3 py-1.5 text-xs text-dune"
-                value={form.bundle_domain_ids || []}
+                value={form.domain_ids || form.bundle_domain_ids || []}
                 onChange={(e) => {
                   const vals = Array.from(e.target.selectedOptions).map((o) => o.value);
-                  setForm({ ...form, bundle_domain_ids: vals });
+                  setForm({ ...form, domain_ids: vals, bundle_domain_ids: vals });
                 }}
               >
                 {domains.map((d) => (
@@ -418,17 +480,22 @@ export default function ProductManagerPanel() {
 
           <button
             type="submit"
+            disabled={Boolean(formValidationMessage)}
             className="w-full rounded-xl bg-ember px-5 py-3 text-sm font-semibold text-midnight hover:opacity-90 mt-2"
           >
             {editingId ? "Save Changes" : "Create Product"}
           </button>
+
+          {formValidationMessage && (
+            <p className="text-xs text-ember">{formValidationMessage}</p>
+          )}
 
           {editingId && (
             <button
               type="button"
               onClick={() => {
                 setEditingId(null);
-                setForm({ tier: "domain", currency: "INR", price: 0, status: "active", content_types: [], bundle_domain_ids: [] });
+                setForm(EMPTY_PRODUCT_FORM);
               }}
               className="w-full rounded-xl border border-dune/30 px-5 py-2 text-xs font-semibold hover:bg-dune/10 mt-1"
             >

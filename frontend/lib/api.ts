@@ -127,7 +127,7 @@ export async function submitPurchaseLead(payload: {
 }
 
 export async function createCourse(
-  payload: { title: string; description?: string; level?: string; domain?: string; subdomain?: string },
+  payload: { title: string; description?: string; level?: string; domain?: string; subdomain?: string; product_id?: string },
   token: string,
 ) {
   return apiFetch<any>(
@@ -142,7 +142,7 @@ export async function createCourse(
 
 export async function addModule(
   courseId: string,
-  payload: { title: string; sort_order?: number },
+  payload: { title: string; status?: string; sort_order?: number },
   token: string,
 ) {
   return apiFetch<any>(
@@ -160,6 +160,7 @@ export async function addLesson(
   payload: {
     title: string;
     content_type?: string;
+    status?: string;
     content_url?: string;
     duration_seconds?: number;
     sort_order?: number;
@@ -216,7 +217,7 @@ export async function bulkDelete(payload: { courseIds?: string[]; moduleIds?: st
 
 export async function updateCourse(
   courseId: string,
-  payload: { title?: string; description?: string; level?: string; status?: string; domain?: string; subdomain?: string },
+  payload: { title?: string; description?: string; level?: string; status?: string; domain?: string; subdomain?: string; product_id?: string | null },
   token: string,
 ) {
   return apiFetch<any>(
@@ -392,4 +393,20 @@ export async function retryLeadEvent(leadId: string, token: string) {
 
 export async function getInstitutionOverview(institutionId: string, token: string) {
   return apiFetch<any>(`/api/v1/institutions/${institutionId}/overview`, { cache: "no-store" }, token);
+}
+
+export async function giveConsent(token: string) {
+  return apiFetch<{ message: string }>("/api/v1/compliance/consent", {
+    method: "POST",
+  }, token);
+}
+
+export async function exportMyData(token: string) {
+  return apiFetch<any>("/api/v1/compliance/export", { cache: "no-store" }, token);
+}
+
+export async function deleteMyAccount(token: string) {
+  return apiFetch<{ message: string }>("/api/v1/compliance/account", {
+    method: "DELETE",
+  }, token);
 }

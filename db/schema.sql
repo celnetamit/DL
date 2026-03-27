@@ -91,6 +91,24 @@ CREATE TABLE IF NOT EXISTS products (
 CREATE INDEX IF NOT EXISTS idx_products_domain_id ON products (domain_id);
 CREATE INDEX IF NOT EXISTS idx_products_subdomain_id ON products (subdomain_id);
 
+CREATE TABLE IF NOT EXISTS product_content_links (
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  content_id UUID NOT NULL REFERENCES contents(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (product_id, content_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_product_content_links_content_id ON product_content_links (content_id);
+
+CREATE TABLE IF NOT EXISTS product_domain_links (
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  domain_id UUID NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (product_id, domain_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_product_domain_links_domain_id ON product_domain_links (domain_id);
+
 CREATE TABLE IF NOT EXISTS subscriptions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES users(id) ON DELETE SET NULL,
@@ -237,6 +255,18 @@ CREATE TABLE IF NOT EXISTS contents (
 
 CREATE INDEX IF NOT EXISTS idx_contents_type ON contents (type);
 
+CREATE TABLE IF NOT EXISTS content_domain_links (
+  content_id UUID NOT NULL REFERENCES contents(id) ON DELETE CASCADE,
+  domain_id UUID NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
+  subdomain_id UUID REFERENCES subdomains(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (content_id, domain_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_content_domain_links_domain_id ON content_domain_links (domain_id);
+CREATE INDEX IF NOT EXISTS idx_content_domain_links_subdomain_id ON content_domain_links (subdomain_id);
+
 CREATE TABLE IF NOT EXISTS courses (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   title TEXT NOT NULL,
@@ -244,11 +274,14 @@ CREATE TABLE IF NOT EXISTS courses (
   domain TEXT NOT NULL DEFAULT 'General',
   subdomain TEXT,
   author_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  product_id UUID REFERENCES products(id) ON DELETE SET NULL,
   level TEXT NOT NULL DEFAULT 'beginner',
   status TEXT NOT NULL DEFAULT 'draft',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE INDEX IF NOT EXISTS idx_courses_product_id ON courses (product_id);
 
 CREATE TABLE IF NOT EXISTS modules (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

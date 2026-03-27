@@ -13,6 +13,7 @@ type Course struct {
 	Domain      string    `gorm:"not null;default:General" json:"domain"`
 	Subdomain   *string   `json:"subdomain"`
 	AuthorID    *string   `gorm:"type:uuid" json:"author_id"`
+	ProductID   *string   `gorm:"type:uuid;index" json:"product_id"`
 	Level       string    `gorm:"default:beginner" json:"level"`
 	Status      string    `gorm:"default:draft" json:"status"`
 	CreatedAt   time.Time `json:"created_at"`
@@ -30,15 +31,15 @@ type Module struct {
 }
 
 type Lesson struct {
-	ID              string  `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
-	ModuleID        string  `gorm:"type:uuid;not null" json:"module_id"`
-	Title           string  `gorm:"not null" json:"title"`
-	ContentType     string  `gorm:"default:Videos" json:"content_type"`
-	Status          string  `gorm:"default:draft" json:"status"`
-	SourceURL       *string `json:"source_url"`
-	ContentURL      *string `json:"content_url"`
-	DurationSeconds int     `json:"duration_seconds"`
-	SortOrder       int     `json:"sort_order"`
+	ID              string         `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	ModuleID        string         `gorm:"type:uuid;not null" json:"module_id"`
+	Title           string         `gorm:"not null" json:"title"`
+	ContentType     string         `gorm:"default:Videos" json:"content_type"`
+	Status          string         `gorm:"default:draft" json:"status"`
+	SourceURL       *string        `json:"source_url"`
+	ContentURL      *string        `json:"content_url"`
+	DurationSeconds int            `json:"duration_seconds"`
+	SortOrder       int            `json:"sort_order"`
 	Metadata        datatypes.JSON `json:"metadata"`
 }
 

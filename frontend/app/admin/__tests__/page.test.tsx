@@ -15,6 +15,7 @@ vi.mock("@/components/InstitutionPanel", () => ({ default: () => <div>Institutio
 vi.mock("@/components/SubscriptionAdminPanel", () => ({ default: () => <div>Subscriptions Panel</div> }));
 vi.mock("@/components/DomainManagementPanel", () => ({ default: () => <div>Domains Panel</div> }));
 vi.mock("@/components/ProductManagerPanel", () => ({ default: () => <div>Products Panel</div> }));
+vi.mock("@/components/CourseManagerPanel", () => ({ default: () => <div>Courses Panel</div> }));
 vi.mock("@/components/SettingsPanel", () => ({ default: () => <div>Settings Panel</div> }));
 vi.mock("@/components/AIGenerationPanel", () => ({ default: () => <div>AI Logs Panel</div> }));
 
@@ -34,6 +35,7 @@ describe("AdminPage", () => {
     expect(screen.getByRole("button", { name: "AI Logs" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Domains" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Products" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Courses" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Users" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Subscriptions" })).not.toBeInTheDocument();
   });

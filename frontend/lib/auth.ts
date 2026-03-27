@@ -11,6 +11,8 @@ export type AuthUser = {
   id?: string;
   email?: string;
   full_name?: string;
+  consent_given?: boolean;
+  consent_at?: string | null;
   roles?: { name: string }[];
   institution_id?: string;
   avatar_url?: string;

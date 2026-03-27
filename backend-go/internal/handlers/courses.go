@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"lms-backend/internal/authz"
 	"lms-backend/internal/models"
 	"lms-backend/internal/utils"
 
@@ -45,7 +46,11 @@ var allowedContentTypes = map[string]string{
 
 func (h *Handler) ListCourses(c *gin.Context) {
 	var courses []models.Course
-	if err := h.DB.Preload("Modules").Preload("Modules.Lessons").Find(&courses).Error; err != nil {
+	query := h.DB.Preload("Modules").Preload("Modules.Lessons")
+	if productID := strings.TrimSpace(c.Query("product_id")); productID != "" {
+		query = query.Where("product_id = ?", productID)
+	}
+	if err := query.Find(&courses).Error; err != nil {
 		utils.JSON(c, http.StatusInternalServerError, "failed to load courses", nil)
 		return
 	}
@@ -62,6 +67,15 @@ func (h *Handler) GetCourse(c *gin.Context) {
 		return
 	}
 
+	if allowed, reason := h.canAccessCourse(c, course); !allowed {
+		utils.JSON(c, http.StatusForbidden, reason, gin.H{
+			"course_id":         course.ID,
+			"product_id":        course.ProductID,
+			"requires_purchase": course.ProductID != nil && *course.ProductID != "",
+		})
+		return
+	}
+
 	utils.JSON(c, http.StatusOK, "course", course)
 }
 
@@ -71,6 +85,7 @@ type createCourseRequest struct {
 	Domain      string `json:"domain"`
 	Subdomain   string `json:"subdomain"`
 	Level       string `json:"level"`
+	ProductID   string `json:"product_id"`
 }
 
 func (h *Handler) CreateCourse(c *gin.Context) {
@@ -102,6 +117,14 @@ func (h *Handler) CreateCourse(c *gin.Context) {
 		Level:       defaultString(req.Level, "beginner"),
 		Status:      "draft",
 	}
+	if strings.TrimSpace(req.ProductID) != "" {
+		var product models.Product
+		if err := h.DB.Select("id").First(&product, "id = ?", req.ProductID).Error; err != nil {
+			utils.JSON(c, http.StatusBadRequest, "invalid product_id", nil)
+			return
+		}
+		course.ProductID = ptrString(req.ProductID)
+	}
 
 	if err := h.DB.Create(&course).Error; err != nil {
 		utils.JSON(c, http.StatusInternalServerError, "failed to create course", nil)
@@ -112,12 +135,13 @@ func (h *Handler) CreateCourse(c *gin.Context) {
 }
 
 type updateCourseRequest struct {
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Domain      string `json:"domain"`
-	Subdomain   string `json:"subdomain"`
-	Level       string `json:"level"`
-	Status      string `json:"status"`
+	Title       string  `json:"title"`
+	Description string  `json:"description"`
+	Domain      string  `json:"domain"`
+	Subdomain   string  `json:"subdomain"`
+	Level       string  `json:"level"`
+	Status      string  `json:"status"`
+	ProductID   *string `json:"product_id"`
 }
 
 func (h *Handler) UpdateCourse(c *gin.Context) {
@@ -153,6 +177,18 @@ func (h *Handler) UpdateCourse(c *gin.Context) {
 	if req.Status != "" {
 		updates["status"] = req.Status
 	}
+	if req.ProductID != nil {
+		if strings.TrimSpace(*req.ProductID) == "" {
+			updates["product_id"] = nil
+		} else {
+			var product models.Product
+			if err := h.DB.Select("id").First(&product, "id = ?", *req.ProductID).Error; err != nil {
+				utils.JSON(c, http.StatusBadRequest, "invalid product_id", nil)
+				return
+			}
+			updates["product_id"] = strings.TrimSpace(*req.ProductID)
+		}
+	}
 
 	if len(updates) == 0 {
 		utils.JSON(c, http.StatusBadRequest, "no updates provided", nil)
@@ -176,6 +212,52 @@ func (h *Handler) DeleteCourse(c *gin.Context) {
 	}
 
 	utils.JSON(c, http.StatusOK, "course deleted", gin.H{"id": courseID})
+}
+
+func (h *Handler) canAccessCourse(c *gin.Context, course models.Course) (bool, string) {
+	rolesValue, _ := c.Get("roles")
+	roles := authz.NormalizeRoleClaims(rolesValue)
+	if authz.HasAnyRole(roles, authz.RoleInstructor, authz.RoleContentManager, authz.RoleSuperAdmin, authz.RoleSubscriptionManager) {
+		return true, ""
+	}
+
+	if course.ProductID == nil || strings.TrimSpace(*course.ProductID) == "" {
+		return true, ""
+	}
+
+	userID := c.GetString("user_id")
+	if strings.TrimSpace(userID) == "" {
+		return false, "course access requires authentication"
+	}
+
+	var user models.User
+	if err := h.DB.Select("id, institution_id").First(&user, "id = ?", userID).Error; err != nil {
+		return false, "failed to identify user"
+	}
+
+	var purchaseCount int64
+	purchaseQuery := h.DB.Model(&models.Purchase{}).
+		Where("product_id = ? AND access_status = ?", *course.ProductID, "active").
+		Where("user_id = ?", userID)
+	if user.InstitutionID != nil && strings.TrimSpace(*user.InstitutionID) != "" {
+		purchaseQuery = purchaseQuery.Or("product_id = ? AND access_status = ? AND institution_id = ?", *course.ProductID, "active", *user.InstitutionID)
+	}
+	if err := purchaseQuery.Count(&purchaseCount).Error; err == nil && purchaseCount > 0 {
+		return true, ""
+	}
+
+	var subscriptionCount int64
+	subscriptionQuery := h.DB.Model(&models.Subscription{}).
+		Where("product_id = ? AND status = ?", *course.ProductID, "active").
+		Where("user_id = ?", userID)
+	if user.InstitutionID != nil && strings.TrimSpace(*user.InstitutionID) != "" {
+		subscriptionQuery = subscriptionQuery.Or("product_id = ? AND status = ? AND institution_id = ?", *course.ProductID, "active", *user.InstitutionID)
+	}
+	if err := subscriptionQuery.Count(&subscriptionCount).Error; err == nil && subscriptionCount > 0 {
+		return true, ""
+	}
+
+	return false, "course access requires an active purchase or subscription for the linked product"
 }
 
 type createModuleRequest struct {

@@ -18,6 +18,8 @@ type Product struct {
 	SubdomainID      *string        `gorm:"type:uuid" json:"subdomain_id"`
 	ContentID        *string        `gorm:"type:uuid" json:"content_id"`
 	BundleDomainIDs  pq.StringArray `gorm:"type:text[]" json:"bundle_domain_ids"`
+	ContentIDs       []string       `gorm:"-" json:"content_ids,omitempty"`
+	DomainIDs        []string       `gorm:"-" json:"domain_ids,omitempty"`
 	Status           string         `gorm:"default:'draft'" json:"status"`
 	RazorpayPlanID   *string        `json:"razorpay_plan_id"`
 	CreatedAt        time.Time      `json:"created_at"`
