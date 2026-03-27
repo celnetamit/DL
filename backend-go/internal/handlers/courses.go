@@ -1,8 +1,11 @@
 package handlers
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"net/http"
 	"strings"
+	"time"
 
 	"lms-backend/internal/authz"
 	"lms-backend/internal/models"
@@ -74,6 +77,14 @@ func (h *Handler) GetCourse(c *gin.Context) {
 			"requires_purchase": course.ProductID != nil && *course.ProductID != "",
 		})
 		return
+	}
+
+	userID := strings.TrimSpace(c.GetString("user_id"))
+	if userID != "" {
+		var award models.CourseAward
+		if err := h.DB.Where("user_id = ? AND course_id = ?", userID, course.ID).First(&award).Error; err == nil {
+			course.Award = &award
+		}
 	}
 
 	utils.JSON(c, http.StatusOK, "course", course)
@@ -487,13 +498,28 @@ func (h *Handler) UpdateProgress(c *gin.Context) {
 		ProgressPercent:     req.ProgressPercent,
 		LastPositionSeconds: req.LastPositionSeconds,
 	}
+	if req.ProgressPercent >= 100 {
+		now := time.Now().UTC()
+		progress.CompletedAt = &now
+	}
 
 	if err := h.DB.Where("user_id = ? AND lesson_id = ?", userID, req.LessonID).Assign(progress).FirstOrCreate(&progress).Error; err != nil {
 		utils.JSON(c, http.StatusInternalServerError, "failed to update progress", nil)
 		return
 	}
 
-	utils.JSON(c, http.StatusOK, "progress updated", progress)
+	award, err := h.issueCourseAwardIfEligible(userID.(string), req.LessonID)
+	if err != nil {
+		utils.JSON(c, http.StatusInternalServerError, "failed to evaluate course completion", nil)
+		return
+	}
+
+	response := gin.H{"progress": progress}
+	if award != nil {
+		response["award"] = award
+	}
+
+	utils.JSON(c, http.StatusOK, "progress updated", response)
 }
 
 func (h *Handler) GetProgress(c *gin.Context) {
@@ -562,4 +588,80 @@ func allowedContentTypeList() []string {
 
 func ptrString(value string) *string {
 	return &value
+}
+
+func (h *Handler) issueCourseAwardIfEligible(userID, lessonID string) (*models.CourseAward, error) {
+	courseID, totalLessons, err := h.courseSummaryForLesson(lessonID)
+	if err != nil {
+		return nil, err
+	}
+	if courseID == "" || totalLessons == 0 {
+		return nil, nil
+	}
+
+	var completedLessons int64
+	if err := h.DB.
+		Table("progress").
+		Joins("JOIN lessons ON lessons.id = progress.lesson_id").
+		Joins("JOIN modules ON modules.id = lessons.module_id").
+		Where("progress.user_id = ? AND modules.course_id = ? AND progress.progress_percent >= 100", userID, courseID).
+		Distinct("progress.lesson_id").
+		Count(&completedLessons).Error; err != nil {
+		return nil, err
+	}
+
+	if completedLessons < totalLessons {
+		return nil, nil
+	}
+
+	var award models.CourseAward
+	if err := h.DB.Where("user_id = ? AND course_id = ?", userID, courseID).First(&award).Error; err == nil {
+		return &award, nil
+	}
+
+	award = models.CourseAward{
+		UserID:          userID,
+		CourseID:        courseID,
+		BadgeSlug:       "course-complete",
+		BadgeLabel:      "Course Complete",
+		CertificateCode: generateCertificateCode(),
+		IssuedAt:        time.Now().UTC(),
+	}
+	if err := h.DB.Create(&award).Error; err != nil {
+		if err := h.DB.Where("user_id = ? AND course_id = ?", userID, courseID).First(&award).Error; err == nil {
+			return &award, nil
+		}
+		return nil, err
+	}
+
+	return &award, nil
+}
+
+func (h *Handler) courseSummaryForLesson(lessonID string) (string, int64, error) {
+	type result struct {
+		CourseID     string
+		TotalLessons int64
+	}
+
+	var row result
+	err := h.DB.
+		Table("lessons").
+		Select("modules.course_id AS course_id, counts.total_lessons").
+		Joins("JOIN modules ON modules.id = lessons.module_id").
+		Joins("JOIN (SELECT modules.course_id, COUNT(lessons.id) AS total_lessons FROM modules JOIN lessons ON lessons.module_id = modules.id GROUP BY modules.course_id) AS counts ON counts.course_id = modules.course_id").
+		Where("lessons.id = ?", lessonID).
+		Scan(&row).Error
+	if err != nil {
+		return "", 0, err
+	}
+
+	return row.CourseID, row.TotalLessons, nil
+}
+
+func generateCertificateCode() string {
+	buf := make([]byte, 4)
+	if _, err := rand.Read(buf); err != nil {
+		return "DL-" + time.Now().UTC().Format("20060102-150405")
+	}
+	return "DL-" + time.Now().UTC().Format("20060102") + "-" + strings.ToUpper(hex.EncodeToString(buf))
 }
