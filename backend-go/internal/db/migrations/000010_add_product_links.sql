@@ -23,8 +23,9 @@ WHERE content_id IS NOT NULL
 ON CONFLICT (product_id, content_id) DO NOTHING;
 
 INSERT INTO product_domain_links (product_id, domain_id)
-SELECT p.id, linked.domain_id
+SELECT p.id, linked.domain_id::UUID
 FROM products p
 JOIN LATERAL unnest(p.bundle_domain_ids) AS linked(domain_id) ON TRUE
 WHERE p.tier = 'bundle'
+  AND linked.domain_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
 ON CONFLICT (product_id, domain_id) DO NOTHING;
