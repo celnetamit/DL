@@ -196,7 +196,7 @@ describe("CourseManagerPanel", () => {
       throw new Error("Expected lesson card to exist");
     }
 
-    const titleInput = within(lessonCard).getByDisplayValue("Finding Sources");
+    const titleInput = within(lessonCard).getAllByRole("textbox")[0];
     fireEvent.change(titleInput, { target: { value: "" } });
 
     const statusSelect = within(lessonCard).getAllByRole("combobox")[1];

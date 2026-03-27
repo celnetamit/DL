@@ -3,6 +3,7 @@ package handlers
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"time"
@@ -29,6 +30,8 @@ var allowedDomains = map[string]string{
 }
 
 var allowedContentTypes = map[string]string{
+	"article":     "Article",
+	"articles":    "Article",
 	"ebook":       "E-Book",
 	"ebookpdf":    "E-Book",
 	"ebookdoc":    "E-Book",
@@ -466,6 +469,70 @@ func (h *Handler) UpdateLesson(c *gin.Context) {
 	utils.JSON(c, http.StatusOK, "lesson updated", gin.H{"id": lessonID})
 }
 
+type reviewLessonRequest struct {
+	Action string `json:"action" binding:"required"`
+}
+
+func (h *Handler) ReviewGeneratedLesson(c *gin.Context) {
+	lessonID := c.Param("lesson_id")
+	userID := c.GetString("user_id")
+
+	var req reviewLessonRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.JSON(c, http.StatusBadRequest, "invalid request", gin.H{"error": err.Error()})
+		return
+	}
+
+	action := strings.TrimSpace(strings.ToLower(req.Action))
+	if action != "approve" && action != "reject" {
+		utils.JSON(c, http.StatusBadRequest, "invalid review action", gin.H{"allowed": []string{"approve", "reject"}})
+		return
+	}
+
+	var lesson models.Lesson
+	if err := h.DB.First(&lesson, "id = ?", lessonID).Error; err != nil {
+		utils.JSON(c, http.StatusNotFound, "lesson not found", nil)
+		return
+	}
+
+	metadata := map[string]any{}
+	if len(lesson.Metadata) > 0 {
+		_ = json.Unmarshal(lesson.Metadata, &metadata)
+	}
+
+	reviewState := "approved"
+	nextStatus := "published"
+	if action == "reject" {
+		reviewState = "rejected"
+		nextStatus = "draft"
+	}
+
+	metadata["review_status"] = reviewState
+	metadata["reviewed_by"] = userID
+	metadata["reviewed_at"] = time.Now().UTC().Format(time.RFC3339)
+	metadata["generated_by_ai"] = true
+
+	encodedMetadata, err := json.Marshal(metadata)
+	if err != nil {
+		utils.JSON(c, http.StatusInternalServerError, "failed to update review metadata", nil)
+		return
+	}
+
+	if err := h.DB.Model(&models.Lesson{}).Where("id = ?", lessonID).Updates(map[string]any{
+		"status":   nextStatus,
+		"metadata": encodedMetadata,
+	}).Error; err != nil {
+		utils.JSON(c, http.StatusInternalServerError, "failed to update lesson review", nil)
+		return
+	}
+
+	utils.JSON(c, http.StatusOK, "lesson review updated", gin.H{
+		"id":            lessonID,
+		"status":        nextStatus,
+		"review_status": reviewState,
+	})
+}
+
 func (h *Handler) DeleteLesson(c *gin.Context) {
 	lessonID := c.Param("lesson_id")
 
@@ -575,6 +642,7 @@ func allowedDomainList() []string {
 
 func allowedContentTypeList() []string {
 	return []string{
+		"Article",
 		"E-Book",
 		"Thesis",
 		"Journals",

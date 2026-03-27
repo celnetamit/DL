@@ -267,6 +267,21 @@ export async function updateLesson(
   );
 }
 
+export async function reviewLesson(
+  lessonId: string,
+  payload: { action: "approve" | "reject" },
+  token: string,
+) {
+  return apiFetch<any>(
+    `/api/v1/lessons/${lessonId}/review`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+    token,
+  );
+}
+
 export async function updateProgress(
   payload: { lesson_id: string; progress_percent: number; last_position_seconds?: number },
   token: string,
@@ -300,6 +315,32 @@ export async function updateContent(contentId: string, payload: any, token: stri
 
 export async function deleteContent(contentId: string, token: string) {
   return apiFetch<any>(`/api/v1/contents/${contentId}`, { method: "DELETE" }, token);
+}
+
+export async function importContentsCsv(type: string, file: File, token: string) {
+  const formData = new FormData();
+  formData.append("type", type);
+  formData.append("file", file);
+
+  const res = await fetch(buildApiUrl("/api/v1/contents/import"), {
+    method: "POST",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: formData,
+  });
+
+  const raw = await res.text();
+  let payload: ApiResponse<any>;
+  try {
+    payload = JSON.parse(raw) as ApiResponse<any>;
+  } catch {
+    throw new Error(raw.trim() || "Invalid server response");
+  }
+  if (!res.ok || !payload.success) {
+    throw new Error(payload.message || "Import failed");
+  }
+  return payload.data;
 }
 
 export async function getContentFilterPresets(category: string, token: string) {

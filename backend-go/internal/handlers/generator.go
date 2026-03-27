@@ -111,13 +111,15 @@ func (h *Handler) GenerateMaterial(c *gin.Context) {
 	responsePayload := sanitizeAIResponsePayload(aiResult)
 
 	metadataBytes, _ := json.Marshal(map[string]interface{}{
-		"summary":        aiResult.Summary,
-		"key_points":     aiResult.KeyPoints,
-		"flashcards":     aiResult.Flashcards,
-		"ai_provider":    aiResult.Provider,
-		"ai_model":       aiResult.Model,
-		"prompt_version": aiResult.PromptVersion,
-		"generated_at":   aiResult.GeneratedAt,
+		"summary":         aiResult.Summary,
+		"key_points":      aiResult.KeyPoints,
+		"flashcards":      aiResult.Flashcards,
+		"ai_provider":     aiResult.Provider,
+		"ai_model":        aiResult.Model,
+		"prompt_version":  aiResult.PromptVersion,
+		"generated_at":    aiResult.GeneratedAt,
+		"generated_by_ai": true,
+		"review_status":   "pending_review",
 		"generation_source": map[string]interface{}{
 			"url":       req.URL,
 			"text_mode": req.Text != "",
@@ -130,7 +132,7 @@ func (h *Handler) GenerateMaterial(c *gin.Context) {
 		ModuleID:        req.ModuleID,
 		Title:           aiResult.Title,
 		ContentType:     "Article",
-		Status:          "published",
+		Status:          "draft",
 		DurationSeconds: 600,
 		SortOrder:       0,
 		Metadata:        metadataBytes,

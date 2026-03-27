@@ -192,6 +192,7 @@ func main() {
 			protected.DELETE("/modules/:module_id", middleware.RequireRole(authz.RoleInstructor, authz.RoleContentManager, authz.RoleSuperAdmin), handler.DeleteModule)
 			protected.POST("/modules/:module_id/lessons", middleware.RequireRole(authz.RoleInstructor, authz.RoleContentManager, authz.RoleSuperAdmin), handler.AddLesson)
 			protected.PUT("/lessons/:lesson_id", middleware.RequireRole(authz.RoleInstructor, authz.RoleContentManager, authz.RoleSuperAdmin), handler.UpdateLesson)
+			protected.POST("/lessons/:lesson_id/review", middleware.RequireRole(authz.RoleInstructor, authz.RoleContentManager, authz.RoleSuperAdmin), handler.ReviewGeneratedLesson)
 			protected.DELETE("/lessons/:lesson_id", middleware.RequireRole(authz.RoleInstructor, authz.RoleContentManager, authz.RoleSuperAdmin), handler.DeleteLesson)
 			protected.GET("/courses", handler.ListCourses)
 			protected.GET("/courses/:course_id", handler.GetCourse)
@@ -203,6 +204,7 @@ func main() {
 
 			protected.GET("/contents", handler.ListContents)
 			protected.POST("/contents", middleware.RequireRole(authz.RoleContentManager, authz.RoleSuperAdmin), handler.CreateContent)
+			protected.POST("/contents/import", middleware.RequireRole(authz.RoleContentManager, authz.RoleSuperAdmin), handler.ImportContents)
 			protected.PUT("/contents/:content_id", middleware.RequireRole(authz.RoleContentManager, authz.RoleSuperAdmin), handler.UpdateContent)
 			protected.DELETE("/contents/:content_id", middleware.RequireRole(authz.RoleContentManager, authz.RoleSuperAdmin), handler.DeleteContent)
 			protected.GET("/contents/filter-presets", middleware.RequireRole(authz.RoleContentManager, authz.RoleSuperAdmin), handler.ListContentFilterPresets)

@@ -11,6 +11,7 @@ import {
   deleteModule,
   fetchCourses,
   generateMaterial,
+  reviewLesson,
   updateCourse,
   updateLesson,
   updateModule,
@@ -40,6 +41,10 @@ type Lesson = {
     ai_provider?: string;
     ai_model?: string;
     generated_at?: string;
+    generated_by_ai?: boolean;
+    review_status?: string;
+    reviewed_at?: string;
+    reviewed_by?: string;
   };
 };
 
@@ -107,7 +112,9 @@ function canPublishCourse(courseForm: typeof EMPTY_COURSE_FORM) {
 }
 
 function canPublishLesson(form: typeof EMPTY_LESSON_FORM) {
-  return Boolean(form.title.trim() && form.content_url.trim());
+  const hasTitle = Boolean(form.title.trim());
+  const isArticle = form.content_type.trim() === "Article";
+  return hasTitle && (isArticle || Boolean(form.content_url.trim()));
 }
 
 export default function CourseManagerPanel() {
@@ -488,9 +495,22 @@ export default function CourseManagerPanel() {
         token,
       );
       setAiForms((current) => ({ ...current, [moduleId]: EMPTY_AI_FORM }));
-      await refreshCourses("AI lesson generated successfully.");
+      await refreshCourses("AI lesson generated as draft and queued for review.");
     } catch (error: any) {
       setToast({ message: error.message || "Unable to generate lesson.", tone: "error" });
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const handleReviewLesson = async (lessonId: string, action: "approve" | "reject") => {
+    if (!token) return;
+    setBusyKey(`review-${lessonId}-${action}`);
+    try {
+      await reviewLesson(lessonId, { action }, token);
+      await refreshCourses(action === "approve" ? "AI lesson approved and published." : "AI lesson rejected and returned to draft.");
+    } catch (error: any) {
+      setToast({ message: error.message || "Unable to update lesson review.", tone: "error" });
     } finally {
       setBusyKey(null);
     }
@@ -917,12 +937,29 @@ export default function CourseManagerPanel() {
                       const hasAIMetadata =
                         !!lesson.metadata?.summary ||
                         (Array.isArray(lesson.metadata?.key_points) && lesson.metadata.key_points.length > 0);
+                      const reviewStatus = lesson.metadata?.review_status || (hasAIMetadata ? "pending_review" : "");
                       return (
                       <div key={lesson.id} className="rounded-2xl border border-dune/10 bg-midnight/40 p-4">
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
                             <p className="text-[10px] uppercase tracking-widest text-dune/45">Lesson {lessonIndex + 1}</p>
                             <p className="mt-1 text-sm text-dune/75">{lesson.title}</p>
+                            {hasAIMetadata && (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                <span className="rounded-full border border-sky-400/30 bg-sky-400/10 px-2 py-1 text-[10px] uppercase tracking-widest text-sky-300">
+                                  AI Draft
+                                </span>
+                                <span className={`rounded-full px-2 py-1 text-[10px] uppercase tracking-widest ${
+                                  reviewStatus === "approved"
+                                    ? "border border-moss/30 bg-moss/10 text-moss"
+                                    : reviewStatus === "rejected"
+                                      ? "border border-ember/30 bg-ember/10 text-ember"
+                                      : "border border-amber-400/30 bg-amber-400/10 text-amber-200"
+                                }`}>
+                                  {reviewStatus === "approved" ? "Reviewed" : reviewStatus === "rejected" ? "Rejected" : "Pending Review"}
+                                </span>
+                              </div>
+                            )}
                           </div>
                           <button
                             type="button"
@@ -951,6 +988,7 @@ export default function CourseManagerPanel() {
                             onChange={(event) => handleLessonChange(lesson.id, "content_type", event.target.value)}
                             className="rounded-xl border border-dune/20 bg-midnight px-3 py-2 text-sm text-dune"
                           >
+                            <option value="Article">Article</option>
                             <option value="Videos">Videos</option>
                             <option value="E-Book">E-Book</option>
                             <option value="Thesis">Thesis</option>
@@ -993,6 +1031,26 @@ export default function CourseManagerPanel() {
                         </div>
 
                         <div className="mt-4 flex flex-wrap gap-2">
+                          {hasAIMetadata && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleReviewLesson(lesson.id, "approve")}
+                                disabled={busyKey === `review-${lesson.id}-approve`}
+                                className="rounded-xl border border-moss/30 px-4 py-2 text-sm text-moss disabled:opacity-60"
+                              >
+                                {busyKey === `review-${lesson.id}-approve` ? "Approving..." : "Approve & Publish"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleReviewLesson(lesson.id, "reject")}
+                                disabled={busyKey === `review-${lesson.id}-reject`}
+                                className="rounded-xl border border-ember/30 px-4 py-2 text-sm text-ember disabled:opacity-60"
+                              >
+                                {busyKey === `review-${lesson.id}-reject` ? "Rejecting..." : "Reject to Draft"}
+                              </button>
+                            </>
+                          )}
                           <button
                             type="button"
                             onClick={() => handleMoveLesson(module, lessonIndex, -1)}

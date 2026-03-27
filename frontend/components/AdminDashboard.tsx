@@ -12,6 +12,7 @@ import {
   getContentFilterPresets,
   saveContentFilterPreset,
   deleteContentFilterPreset,
+  importContentsCsv,
 } from "@/lib/api";
 import Toast from "@/components/Toast";
 
@@ -159,6 +160,25 @@ type FilterPreset = {
   sourceFilter: string;
 };
 
+type ImportRowResult = {
+  row: number;
+  action: "created" | "updated" | "failed" | string;
+  id?: string;
+  title?: string;
+  status?: string;
+  message?: string;
+};
+
+type ImportReport = {
+  type: string;
+  total_rows: number;
+  created_count: number;
+  updated_count: number;
+  failed_count: number;
+  processed_count: number;
+  rows: ImportRowResult[];
+};
+
 function emptyForm(fields: FieldDef[]) {
   return fields.reduce<Record<string, string>>((acc, field) => {
     if (field.name === "status") acc[field.name] = "Draft";
@@ -251,6 +271,7 @@ export default function AdminDashboard({ standalone = false }: { standalone?: bo
     startTime: number;
     etaSeconds: number | null;
   } | null>(null);
+  const [importReport, setImportReport] = useState<ImportReport | null>(null);
 
   const category = useMemo(() => CATEGORIES.find((item) => item.key === activeKey)!, [activeKey]);
   const [formState, setFormState] = useState<Record<string, string>>(() => emptyForm(category.fields));
@@ -408,6 +429,7 @@ export default function AdminDashboard({ standalone = false }: { standalone?: bo
     setAccessFilter("");
     setSourceFilter("");
     setBulkEditState({ status: "", domain: "", subdomain: "", access_type: "" });
+    setImportReport(null);
   };
 
   const handleFieldChange = (name: string, value: string) => {
@@ -651,122 +673,46 @@ export default function AdminDashboard({ standalone = false }: { standalone?: bo
     document.body.removeChild(a);
   };
 
-  const parseCSVLine = (line: string): string[] => {
-    const result = [];
-    let current = '';
-    let inQuotes = false;
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
-      if (char === '"') {
-        if (inQuotes && line[i + 1] === '"') {
-          current += '"';
-          i++; // skip escaped quote
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if (char === ',' && !inQuotes) {
-        result.push(current);
-        current = '';
-      } else {
-        current += char;
-      }
-    }
-    result.push(current);
-    return result.map(v => v.trim());
-  };
-
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!token || !e.target.files?.length) return;
     const file = e.target.files[0];
-    const reader = new FileReader();
+    setLoading(true);
+    setImportReport(null);
+    const startTime = Date.now();
+    setImportProgress({
+      isImporting: true,
+      total: 1,
+      processed: 0,
+      startTime,
+      etaSeconds: null,
+    });
 
-    reader.onload = async (event) => {
-      const csv = event.target?.result as string;
-      const lines = csv.split(/\r?\n/).filter(l => l.trim().length > 0);
-      if (lines.length < 2) return;
-
-      const headers = parseCSVLine(lines[0]);
-      let imports = 0;
-      let failedRows = 0;
-      setLoading(true);
-
-      const totalRows = lines.length - 1;
-      const startTime = Date.now();
+    try {
+      const result = await importContentsCsv(category.key, file, token) as ImportReport;
       setImportProgress({
         isImporting: true,
-        total: totalRows,
-        processed: 0,
-        startTime: startTime,
-        etaSeconds: null
+        total: result.total_rows || 1,
+        processed: result.processed_count + result.failed_count || result.total_rows || 1,
+        startTime,
+        etaSeconds: 0,
       });
-
-      for (let i = 1; i < lines.length; i++) {
-        const values = parseCSVLine(lines[i]);
-        if (values.length === 0 || (values.length === 1 && values[0] === "")) continue;
-        
-        const rowData: Record<string, string> = {};
-        headers.forEach((h, idx) => {
-          const cleanH = h.replace(/^"|"$/g, '').replace(/^\uFEFF/, '');
-          const val = values[idx] || "";
-          if (!rowData[cleanH]) {
-            rowData[cleanH] = val;
-          } else if (val) {
-            rowData[cleanH] = val; // Only overwrite if the new duplicate column actually has a value
-          }
-        });
-
-        // The id column might have imported with weird leading characters like @id if user edited
-        const idKey = Object.keys(rowData).find(k => k === 'id' || k === '@id') || 'id';
-        const id = rowData[idKey];
-        
-        const { title, status, source_url, ...rawMetadata } = rowData;
-        delete rawMetadata[idKey];
-        
-        // Remove empty keys from metadata
-        const metadata: Record<string, string> = {};
-        for (const k in rawMetadata) {
-          if (k) metadata[k] = rawMetadata[k];
-        }
-
-        const payload = {
-          type: category.key,
-          title: title || "Imported Record",
-          status: status || "Draft",
-          source_url: source_url || "",
-          metadata
-        };
-
-        try {
-          if (id) {
-            await updateContent(id, payload, token);
-          } else {
-            await createContent(payload, token);
-          }
-          imports++;
-        } catch (err) {
-          console.error("Failed importing row", i, err);
-          failedRows++;
-        }
-
-        const elapsedSeconds = (Date.now() - startTime) / 1000;
-        const itemsPerSecond = i / elapsedSeconds;
-        const remainingItems = totalRows - i;
-        const etaSeconds = itemsPerSecond > 0 ? Math.round(remainingItems / itemsPerSecond) : null;
-        setImportProgress(prev => prev ? { ...prev, processed: i, etaSeconds } : null);
-      }
-      
+      setImportReport(result);
       setToast({
-        message: failedRows > 0
-          ? `Import finished with ${imports} successful rows and ${failedRows} failed rows.`
-          : `Import completed successfully with ${imports} records processed.`,
-        tone: failedRows > 0 ? "error" : "success",
+        message:
+          result.failed_count > 0
+            ? `Import finished with ${result.created_count + result.updated_count} successful rows and ${result.failed_count} failed rows.`
+            : `Import completed successfully with ${result.created_count} created and ${result.updated_count} updated records.`,
+        tone: result.failed_count > 0 ? "error" : "success",
       });
       await loadData(category.key);
+    } catch (err) {
+      console.error(err);
+      setToast({ message: err instanceof Error ? err.message : "Import failed.", tone: "error" });
+    } finally {
       setLoading(false);
       setImportProgress(null);
-    };
-    reader.readAsText(file);
-    e.target.value = ""; // reset input
+      e.target.value = "";
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -1051,6 +997,73 @@ export default function AdminDashboard({ standalone = false }: { standalone?: bo
             <div className="mt-3 text-right text-xs text-dune/60 font-[var(--font-space)]">
               {Math.round((importProgress.processed / importProgress.total) * 100)}% Complete
             </div>
+          </div>
+        )}
+
+        {importReport && (
+          <div className="glass rounded-2xl p-6 border border-dune/10 bg-midnight/50">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] uppercase tracking-widest text-dune/55">Latest Import Report</p>
+                <h4 className="mt-2 text-lg font-semibold text-dune">
+                  {category.label} import summary
+                </h4>
+                <p className="mt-2 text-sm text-dune/60">
+                  {importReport.created_count} created, {importReport.updated_count} updated, {importReport.failed_count} failed out of {importReport.total_rows} rows.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setImportReport(null)}
+                className="rounded-full bg-dune/10 px-3 py-1 text-xs hover:bg-dune/20 transition"
+              >
+                Dismiss
+              </button>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-4">
+              <div className="rounded-2xl border border-dune/10 bg-midnight/30 p-4">
+                <p className="text-[10px] uppercase tracking-widest text-dune/45">Total Rows</p>
+                <p className="mt-2 text-2xl font-[var(--font-space)] text-ember">{importReport.total_rows}</p>
+              </div>
+              <div className="rounded-2xl border border-dune/10 bg-midnight/30 p-4">
+                <p className="text-[10px] uppercase tracking-widest text-dune/45">Created</p>
+                <p className="mt-2 text-2xl font-[var(--font-space)] text-moss">{importReport.created_count}</p>
+              </div>
+              <div className="rounded-2xl border border-dune/10 bg-midnight/30 p-4">
+                <p className="text-[10px] uppercase tracking-widest text-dune/45">Updated</p>
+                <p className="mt-2 text-2xl font-[var(--font-space)] text-sky-300">{importReport.updated_count}</p>
+              </div>
+              <div className="rounded-2xl border border-dune/10 bg-midnight/30 p-4">
+                <p className="text-[10px] uppercase tracking-widest text-dune/45">Failed</p>
+                <p className="mt-2 text-2xl font-[var(--font-space)] text-ember">{importReport.failed_count}</p>
+              </div>
+            </div>
+
+            {importReport.failed_count > 0 && (
+              <div className="mt-5 rounded-2xl border border-ember/20 bg-ember/5 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-ember">Failed Rows</p>
+                  <span className="text-[10px] uppercase tracking-widest text-ember/80">
+                    {importReport.rows.filter((row) => row.action === "failed").length} issues
+                  </span>
+                </div>
+                <div className="mt-3 space-y-3">
+                  {importReport.rows
+                    .filter((row) => row.action === "failed")
+                    .map((row) => (
+                      <div key={`${row.row}-${row.message}`} className="rounded-xl border border-ember/10 bg-midnight/40 p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                          <span className="uppercase tracking-widest text-dune/45">Row {row.row}</span>
+                          {row.status ? <span className="text-dune/55">{row.status}</span> : null}
+                        </div>
+                        {row.title ? <p className="mt-2 text-sm text-dune">{row.title}</p> : null}
+                        <p className="mt-1 text-sm text-ember/90">{row.message || "Import failed for this row."}</p>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
