@@ -21,6 +21,7 @@ import {
   hasAnyRole,
 } from "@/lib/roles";
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 
 const TABS = ["Analytics", "AI Logs", "Email Events", "Leads", "Users", "Institutions", "Subscriptions", "Domains", "Products", "Courses", "Settings"] as const;
 type Tab = typeof TABS[number];
@@ -79,6 +80,14 @@ export default function AdminPage() {
         <header>
           <p className="text-xs uppercase tracking-[0.3em] text-ember">Admin Command Center</p>
           <h1 className="font-[var(--font-space)] text-3xl">Institution, Subscription & Content Operations</h1>
+          {hasAnyRole(roleNames, [ROLE_SUPER_ADMIN, ROLE_CONTENT_MANAGER]) && (
+            <Link
+              href="/content-manager"
+              className="mt-4 inline-flex rounded-full border border-dune/20 px-4 py-2 text-sm text-dune hover:border-ember hover:text-ember transition-colors"
+            >
+              Open Dedicated Content Manager
+            </Link>
+          )}
         </header>
 
         {/* Tab Nav */}

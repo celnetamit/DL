@@ -2,7 +2,17 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth";
-import { fetchContents, createContent, updateContent, deleteContent, getAdminAnalytics, apiFetch } from "@/lib/api";
+import {
+  fetchContents,
+  createContent,
+  updateContent,
+  deleteContent,
+  getAdminAnalytics,
+  apiFetch,
+  getContentFilterPresets,
+  saveContentFilterPreset,
+  deleteContentFilterPreset,
+} from "@/lib/api";
 import Toast from "@/components/Toast";
 
 const CATEGORIES = [
@@ -138,6 +148,17 @@ type Item = {
   [key: string]: any;
 };
 
+type FilterPreset = {
+  id?: string;
+  name: string;
+  searchTerm: string;
+  statusFilter: string;
+  domainFilter: string;
+  subdomainFilter: string;
+  accessFilter: string;
+  sourceFilter: string;
+};
+
 function emptyForm(fields: FieldDef[]) {
   return fields.reduce<Record<string, string>>((acc, field) => {
     if (field.name === "status") acc[field.name] = "Draft";
@@ -149,7 +170,7 @@ function emptyForm(fields: FieldDef[]) {
 
 const ESSENTIAL_FIELD_NAMES = new Set(["title", "domain", "subdomain", "source_url", "status", "access_type"]);
 
-export default function AdminDashboard() {
+export default function AdminDashboard({ standalone = false }: { standalone?: boolean }) {
   const { token, loading: authLoading } = useAuth();
   const [activeKey, setActiveKey] = useState(CATEGORIES[0].key);
   const [itemsByCategory, setItemsByCategory] = useState<Record<string, Item[]>>({});
@@ -199,13 +220,26 @@ export default function AdminDashboard() {
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [domainFilter, setDomainFilter] = useState("");
+  const [subdomainFilter, setSubdomainFilter] = useState("");
+  const [accessFilter, setAccessFilter] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("");
+  const [presetName, setPresetName] = useState("");
+  const [savedPresets, setSavedPresets] = useState<Record<string, FilterPreset[]>>({});
   const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [compactView, setCompactView] = useState(true);
   const [showAdvancedFields, setShowAdvancedFields] = useState(false);
   const [quickAddStep, setQuickAddStep] = useState(1);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [inlineEdits, setInlineEdits] = useState<Record<string, Partial<Item>>>({});
+  const [bulkEditState, setBulkEditState] = useState({
+    status: "",
+    domain: "",
+    subdomain: "",
+    access_type: "",
+  });
   const [analyticsLoadError, setAnalyticsLoadError] = useState<string | null>(null);
   const [domainLoadError, setDomainLoadError] = useState<string | null>(null);
   const itemsPerPage = 20;
@@ -250,7 +284,15 @@ export default function AdminDashboard() {
       item.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       Object.values(item).some((value) => String(value || "").toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesStatus = !statusFilter || item.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesDomain = !domainFilter || item.domain === domainFilter;
+    const matchesSubdomain = !subdomainFilter || item.subdomain === subdomainFilter;
+    const matchesAccess = !accessFilter || item.access_type === accessFilter;
+    const hasSource = Boolean(item.source_url);
+    const matchesSource =
+      !sourceFilter ||
+      (sourceFilter === "with-source" && hasSource) ||
+      (sourceFilter === "missing-source" && !hasSource);
+    return matchesSearch && matchesStatus && matchesDomain && matchesSubdomain && matchesAccess && matchesSource;
   });
   
   const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
@@ -308,8 +350,33 @@ export default function AdminDashboard() {
     }
   }, [token, authLoading, analyticsWindow]);
 
+  useEffect(() => {
+    if (!token) return;
+    getContentFilterPresets(activeKey, token)
+      .then((presets) => {
+        const mapped = (presets || []).map((preset) => ({
+          id: preset.id,
+          name: preset.name,
+          ...(preset.filter_data || {}),
+        }));
+        setSavedPresets((prev) => ({ ...prev, [activeKey]: mapped }));
+      })
+      .catch((error) => {
+        console.error("Unable to load saved filter presets", error);
+      });
+  }, [activeKey, token]);
+
   const maxRevenue = Math.max(...analytics.monthly_growth.map((point) => point.revenue), 0);
   const maxUsers = Math.max(...analytics.monthly_growth.map((point) => point.users), 0);
+  const currentPreset: FilterPreset = {
+    name: presetName,
+    searchTerm,
+    statusFilter,
+    domainFilter,
+    subdomainFilter,
+    accessFilter,
+    sourceFilter,
+  };
 
   const resetForm = () => {
     setFormState(emptyForm(category.fields));
@@ -320,6 +387,10 @@ export default function AdminDashboard() {
     setQuickAddStep(1);
     setSearchTerm("");
     setStatusFilter("");
+    setDomainFilter("");
+    setSubdomainFilter("");
+    setAccessFilter("");
+    setSourceFilter("");
   };
 
   const handleCategoryChange = (key: string) => {
@@ -332,6 +403,11 @@ export default function AdminDashboard() {
     setEditingId(null);
     setErrorMsg(null);
     setIsModalOpen(false);
+    setDomainFilter("");
+    setSubdomainFilter("");
+    setAccessFilter("");
+    setSourceFilter("");
+    setBulkEditState({ status: "", domain: "", subdomain: "", access_type: "" });
   };
 
   const handleFieldChange = (name: string, value: string) => {
@@ -392,6 +468,126 @@ export default function AdminDashboard() {
       setToast({ message: "Bulk update failed.", tone: "error" });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleBulkEditApply = async () => {
+    if (!token || selectedIds.length === 0) return;
+    const overrides = Object.fromEntries(
+      Object.entries(bulkEditState).filter(([, value]) => value !== ""),
+    );
+
+    if (Object.keys(overrides).length === 0) {
+      setToast({ message: "Choose at least one bulk edit field first.", tone: "error" });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const selectedItems = currentItems.filter((item) => selectedIds.includes(item.id));
+      await Promise.all(
+        selectedItems.map((item) => updateContent(item.id, buildPayload(item, overrides), token)),
+      );
+      await loadData(category.key);
+      setSelectedIds([]);
+      setBulkEditState({ status: "", domain: "", subdomain: "", access_type: "" });
+      setToast({ message: `Bulk updated ${selectedItems.length} records.`, tone: "success" });
+    } catch (err) {
+      console.error(err);
+      setToast({ message: "Bulk edit failed.", tone: "error" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (!token || selectedIds.length === 0) return;
+    setLoading(true);
+    try {
+      await Promise.all(selectedIds.map((id) => deleteContent(id, token)));
+      setItemsByCategory((prev) => ({
+        ...prev,
+        [category.key]: (prev[category.key] || []).filter((item) => !selectedIds.includes(item.id)),
+      }));
+      setSelectedIds([]);
+      setConfirmBulkDelete(false);
+      setToast({ message: "Selected records deleted successfully.", tone: "success" });
+    } catch (err) {
+      console.error(err);
+      setToast({ message: "Bulk delete failed.", tone: "error" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const applyPreset = (preset: FilterPreset) => {
+    setSearchTerm(preset.searchTerm);
+    setStatusFilter(preset.statusFilter);
+    setDomainFilter(preset.domainFilter);
+    setSubdomainFilter(preset.subdomainFilter);
+    setAccessFilter(preset.accessFilter);
+    setSourceFilter(preset.sourceFilter);
+    setPresetName(preset.name);
+    setCurrentPage(1);
+  };
+
+  const handleSavePreset = async () => {
+    if (!token) return;
+    const name = presetName.trim();
+    if (!name) {
+      setToast({ message: "Give this filter preset a name first.", tone: "error" });
+      return;
+    }
+
+    const nextPreset = { ...currentPreset, name };
+    try {
+      const saved = await saveContentFilterPreset(
+        {
+          category: category.key,
+          name,
+          filter_data: {
+            searchTerm: nextPreset.searchTerm,
+            statusFilter: nextPreset.statusFilter,
+            domainFilter: nextPreset.domainFilter,
+            subdomainFilter: nextPreset.subdomainFilter,
+            accessFilter: nextPreset.accessFilter,
+            sourceFilter: nextPreset.sourceFilter,
+          },
+        },
+        token,
+      );
+      const normalized = {
+        id: saved.id,
+        name: saved.name,
+        ...(saved.filter_data || {}),
+      };
+      setSavedPresets((prev) => {
+        const current = prev[category.key] || [];
+        const next = [...current.filter((preset) => preset.name !== name), normalized];
+        return { ...prev, [category.key]: next };
+      });
+      setToast({ message: `Saved preset "${name}".`, tone: "success" });
+    } catch (error) {
+      console.error(error);
+      setToast({ message: "Unable to save preset right now.", tone: "error" });
+    }
+  };
+
+  const handleDeletePreset = async (preset: FilterPreset) => {
+    if (!token || !preset.id) return;
+    try {
+      await deleteContentFilterPreset(preset.id, token);
+      setSavedPresets((prev) => {
+        const next = (prev[category.key] || []).filter((item) => item.id !== preset.id);
+        return { ...prev, [category.key]: next };
+      });
+      if (presetName === preset.name) {
+        setPresetName("");
+      }
+      setToast({ message: `Removed preset "${preset.name}".`, tone: "success" });
+    } catch (error) {
+      console.error(error);
+      setToast({ message: "Unable to remove preset right now.", tone: "error" });
     }
   };
 
@@ -612,6 +808,7 @@ export default function AdminDashboard() {
           {domainLoadError && <p className={analyticsLoadError ? "mt-1" : ""}>{domainLoadError}</p>}
         </div>
       )}
+      {!standalone && (
       <section className="grid gap-6 md:grid-cols-3 mb-8 min-w-0 w-full">
         <div className="glass rounded-2xl p-6 border border-dune/20">
           <p className="text-[10px] font-bold uppercase tracking-widest text-dune/60">Total Users</p>
@@ -630,7 +827,9 @@ export default function AdminDashboard() {
           <p className="mt-4 font-[var(--font-space)] text-4xl font-semibold text-ember">₹{analytics.total_revenue}</p>
         </div>
       </section>
+      )}
 
+      {!standalone && (
       <section className="grid gap-6 lg:grid-cols-[1fr_1fr_1fr] mb-8 min-w-0 w-full">
         <div className="glass rounded-2xl p-6 border border-dune/20">
           <p className="text-[10px] font-bold uppercase tracking-widest text-dune/60">Database Status</p>
@@ -674,7 +873,9 @@ export default function AdminDashboard() {
           <p className="mt-2 text-sm text-dune/60">Audit events recorded in the last 24 hours</p>
         </div>
       </section>
+      )}
 
+      {!standalone && (
       <section className="grid gap-6 lg:grid-cols-[1.4fr_0.6fr] mb-8 min-w-0 w-full">
         <div className="glass rounded-2xl p-6 border border-dune/20">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -774,11 +975,12 @@ export default function AdminDashboard() {
           </div>
         </div>
       </section>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-[260px_1fr] min-w-0 w-full">
         <aside className="glass rounded-2xl p-6 min-w-0">
         <div>
-          <p className="text-xs uppercase tracking-[0.3em] text-dune/60">Admin Dashboard</p>
+          <p className="text-xs uppercase tracking-[0.3em] text-dune/60">{standalone ? "Operations" : "Admin Dashboard"}</p>
           <h2 className="mt-2 font-[var(--font-space)] text-2xl">Content Manager</h2>
         </div>
         <nav className="mt-6 space-y-2">
@@ -805,7 +1007,7 @@ export default function AdminDashboard() {
               <p className="text-xs uppercase tracking-[0.3em] text-dune/60">Manage</p>
               <h3 className="font-[var(--font-space)] text-2xl">{category.label}</h3>
               <p className="mt-2 text-sm text-dune/70">
-                Add, edit, and remove {category.label.toLowerCase()} content.
+                Add, edit, filter, and bulk-manage {category.label.toLowerCase()} content.
               </p>
             </div>
             <div className="text-xs text-dune/60">
@@ -878,6 +1080,57 @@ export default function AdminDashboard() {
                   <option value="Published">Published</option>
                   <option value="Archived">Archived</option>
                 </select>
+                <select
+                  value={domainFilter}
+                  onChange={(event) => {
+                    setCurrentPage(1);
+                    setDomainFilter(event.target.value);
+                    setSubdomainFilter("");
+                  }}
+                  className="rounded-full border border-dune/20 bg-midnight/40 px-3 py-1.5 text-xs text-dune outline-none"
+                >
+                  <option value="">All Domains</option>
+                  {globalDomains.map((dom) => (
+                    <option key={dom.id} value={dom.name}>{dom.name}</option>
+                  ))}
+                </select>
+                <select
+                  value={subdomainFilter}
+                  onChange={(event) => {
+                    setCurrentPage(1);
+                    setSubdomainFilter(event.target.value);
+                  }}
+                  className="rounded-full border border-dune/20 bg-midnight/40 px-3 py-1.5 text-xs text-dune outline-none"
+                >
+                  <option value="">All Subdomains</option>
+                  {(globalDomains.find((dom) => dom.name === domainFilter)?.subdomains || []).map((sub: any) => (
+                    <option key={sub.id} value={sub.name}>{sub.name}</option>
+                  ))}
+                </select>
+                <select
+                  value={accessFilter}
+                  onChange={(event) => {
+                    setCurrentPage(1);
+                    setAccessFilter(event.target.value);
+                  }}
+                  className="rounded-full border border-dune/20 bg-midnight/40 px-3 py-1.5 text-xs text-dune outline-none"
+                >
+                  <option value="">All Access</option>
+                  <option value="Open Access">Open Access</option>
+                  <option value="Subscription-based">Subscription-based</option>
+                </select>
+                <select
+                  value={sourceFilter}
+                  onChange={(event) => {
+                    setCurrentPage(1);
+                    setSourceFilter(event.target.value);
+                  }}
+                  className="rounded-full border border-dune/20 bg-midnight/40 px-3 py-1.5 text-xs text-dune outline-none"
+                >
+                  <option value="">All Source States</option>
+                  <option value="with-source">Has Source URL</option>
+                  <option value="missing-source">Missing Source URL</option>
+                </select>
                 <input type="file" id="csv-upload" className="hidden" accept=".csv" onChange={handleImport} disabled={loading} />
                 <label htmlFor="csv-upload" className="cursor-pointer rounded-full bg-dune/10 px-3 py-1 text-xs hover:bg-dune/20 transition disabled:opacity-50">
                   Import CSV
@@ -905,12 +1158,132 @@ export default function AdminDashboard() {
                     >
                       Bulk Archive ({selectedIds.length})
                     </button>
+                    {confirmBulkDelete ? (
+                      <>
+                        <button
+                          onClick={handleBulkDelete}
+                          className="rounded-full bg-ember px-3 py-1 text-xs font-semibold text-midnight hover:bg-ember/90 transition"
+                        >
+                          Confirm Delete ({selectedIds.length})
+                        </button>
+                        <button
+                          onClick={() => setConfirmBulkDelete(false)}
+                          className="rounded-full bg-dune/10 px-3 py-1 text-xs hover:bg-dune/20 transition"
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmBulkDelete(true)}
+                        className="rounded-full bg-ember/20 px-3 py-1 text-xs text-ember hover:bg-ember/30 transition"
+                      >
+                        Bulk Delete ({selectedIds.length})
+                      </button>
+                    )}
                   </>
                 )}
                 <button onClick={() => { resetForm(); setIsModalOpen(true); }} className="rounded-full bg-ember px-4 py-1.5 text-xs text-midnight font-bold shadow-glow hover:bg-ember/90 transition">
                   + Add New
                 </button>
               </div>
+            </div>
+            <div className="mt-4 rounded-2xl border border-dune/10 bg-midnight/20 p-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <input
+                  value={presetName}
+                  onChange={(event) => setPresetName(event.target.value)}
+                  placeholder="Preset name"
+                  className="rounded-xl border border-dune/20 bg-midnight/40 px-3 py-2 text-xs text-dune outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={handleSavePreset}
+                  className="rounded-xl bg-dune/10 px-3 py-2 text-xs hover:bg-dune/20 transition"
+                >
+                  Save Current Filters
+                </button>
+                {savedPresets[category.key]?.length ? (
+                  <span className="text-[10px] uppercase tracking-widest text-dune/50">
+                    {savedPresets[category.key].length} saved preset{savedPresets[category.key].length === 1 ? "" : "s"}
+                  </span>
+                ) : null}
+              </div>
+              {savedPresets[category.key]?.length ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {savedPresets[category.key].map((preset) => (
+                    <div key={preset.name} className="flex items-center gap-2 rounded-full border border-dune/15 bg-midnight/30 px-3 py-1.5">
+                      <button
+                        type="button"
+                        onClick={() => applyPreset(preset)}
+                        className="text-xs text-dune/80 hover:text-ember transition"
+                      >
+                        {preset.name}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeletePreset(preset)}
+                        className="text-[10px] uppercase tracking-widest text-dune/45 hover:text-ember transition"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            <div className="mt-4 grid gap-3 rounded-2xl border border-dune/10 bg-midnight/20 p-4 md:grid-cols-[1fr_1fr_1fr_1fr_auto]">
+              <select
+                aria-label="Bulk status"
+                value={bulkEditState.status}
+                onChange={(event) => setBulkEditState((prev) => ({ ...prev, status: event.target.value }))}
+                className="rounded-xl border border-dune/20 bg-midnight/40 px-3 py-2 text-xs text-dune outline-none"
+              >
+                <option value="">Bulk status</option>
+                <option value="Draft">Draft</option>
+                <option value="Published">Published</option>
+                <option value="Archived">Archived</option>
+              </select>
+              <select
+                aria-label="Bulk domain"
+                value={bulkEditState.domain}
+                onChange={(event) => setBulkEditState((prev) => ({ ...prev, domain: event.target.value, subdomain: "" }))}
+                className="rounded-xl border border-dune/20 bg-midnight/40 px-3 py-2 text-xs text-dune outline-none"
+              >
+                <option value="">Bulk domain</option>
+                {globalDomains.map((dom) => (
+                  <option key={dom.id} value={dom.name}>{dom.name}</option>
+                ))}
+              </select>
+              <select
+                aria-label="Bulk subdomain"
+                value={bulkEditState.subdomain}
+                onChange={(event) => setBulkEditState((prev) => ({ ...prev, subdomain: event.target.value }))}
+                className="rounded-xl border border-dune/20 bg-midnight/40 px-3 py-2 text-xs text-dune outline-none"
+              >
+                <option value="">Bulk subdomain</option>
+                {(globalDomains.find((dom) => dom.name === bulkEditState.domain)?.subdomains || []).map((sub: any) => (
+                  <option key={sub.id} value={sub.name}>{sub.name}</option>
+                ))}
+              </select>
+              <select
+                aria-label="Bulk access type"
+                value={bulkEditState.access_type}
+                onChange={(event) => setBulkEditState((prev) => ({ ...prev, access_type: event.target.value }))}
+                className="rounded-xl border border-dune/20 bg-midnight/40 px-3 py-2 text-xs text-dune outline-none"
+              >
+                <option value="">Bulk access type</option>
+                <option value="Open Access">Open Access</option>
+                <option value="Subscription-based">Subscription-based</option>
+              </select>
+              <button
+                type="button"
+                onClick={handleBulkEditApply}
+                disabled={selectedIds.length === 0 || loading}
+                className="rounded-xl bg-ember px-4 py-2 text-xs font-bold text-midnight transition hover:bg-ember/90 disabled:opacity-50"
+              >
+                Apply Bulk Edit
+              </button>
             </div>
             <div className="mt-4 overflow-x-auto">
               <table className="w-full text-left text-sm whitespace-nowrap">

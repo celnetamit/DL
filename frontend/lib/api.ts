@@ -302,6 +302,29 @@ export async function deleteContent(contentId: string, token: string) {
   return apiFetch<any>(`/api/v1/contents/${contentId}`, { method: "DELETE" }, token);
 }
 
+export async function getContentFilterPresets(category: string, token: string) {
+  const query = new URLSearchParams();
+  if (category) query.set("category", category);
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return apiFetch<any[]>(`/api/v1/contents/filter-presets${suffix}`, { cache: "no-store" }, token);
+}
+
+export async function saveContentFilterPreset(
+  payload: { category: string; name: string; filter_data: Record<string, unknown> },
+  token: string,
+) {
+  return apiFetch<any>("/api/v1/contents/filter-presets", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }, token);
+}
+
+export async function deleteContentFilterPreset(presetId: string, token: string) {
+  return apiFetch<any>(`/api/v1/contents/filter-presets/${presetId}`, {
+    method: "DELETE",
+  }, token);
+}
+
 export async function generateMaterial(payload: Record<string, unknown>, token: string) {
   return apiFetch<any>("/api/v1/ai/generate", {
     method: "POST",

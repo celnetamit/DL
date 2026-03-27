@@ -205,6 +205,9 @@ func main() {
 			protected.POST("/contents", middleware.RequireRole(authz.RoleContentManager, authz.RoleSuperAdmin), handler.CreateContent)
 			protected.PUT("/contents/:content_id", middleware.RequireRole(authz.RoleContentManager, authz.RoleSuperAdmin), handler.UpdateContent)
 			protected.DELETE("/contents/:content_id", middleware.RequireRole(authz.RoleContentManager, authz.RoleSuperAdmin), handler.DeleteContent)
+			protected.GET("/contents/filter-presets", middleware.RequireRole(authz.RoleContentManager, authz.RoleSuperAdmin), handler.ListContentFilterPresets)
+			protected.POST("/contents/filter-presets", middleware.RequireRole(authz.RoleContentManager, authz.RoleSuperAdmin), handler.UpsertContentFilterPreset)
+			protected.DELETE("/contents/filter-presets/:preset_id", middleware.RequireRole(authz.RoleContentManager, authz.RoleSuperAdmin), handler.DeleteContentFilterPreset)
 
 			// Step 15 - Master Domain Manager
 			protected.GET("/domains", handler.ListDomains)
