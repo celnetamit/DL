@@ -1,11 +1,29 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useCompliance } from "@/hooks/useCompliance";
 import Link from "next/link";
-import { ShieldCheck, Info } from "lucide-react";
+import { ShieldCheck, Info, Clock3 } from "lucide-react";
 
 export default function ConsentBanner() {
   const { consentGiven, acceptConsent } = useCompliance();
+  const [currentTime, setCurrentTime] = useState("");
+
+  useEffect(() => {
+    const formatTime = () =>
+      new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+
+    setCurrentTime(formatTime());
+    const interval = window.setInterval(() => {
+      setCurrentTime(formatTime());
+    }, 1000);
+
+    return () => window.clearInterval(interval);
+  }, []);
 
   if (consentGiven === true || consentGiven === null) return null;
 
@@ -17,11 +35,15 @@ export default function ConsentBanner() {
         <div className="absolute -bottom-12 -left-12 w-32 h-32 bg-ember/5 rounded-full blur-3xl opacity-20" />
         
         <div className="flex-1 space-y-3 relative">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <div className="p-2 bg-ember/20 rounded-lg text-ember">
               <ShieldCheck className="w-5 h-5" />
             </div>
             <h4 className="text-lg font-[var(--font-space)] font-bold text-dune">Your Privacy Matters</h4>
+            <div className="inline-flex items-center gap-2 rounded-full border border-dune/15 bg-midnight/40 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-dune/60">
+              <Clock3 className="h-3.5 w-3.5 text-ember" />
+              <span>{currentTime || "--:--:--"}</span>
+            </div>
           </div>
           <p className="text-sm text-dune/60 leading-relaxed font-light">
             We use essential cookies to ensure our platform functions securely. By continuing, you agree to our 

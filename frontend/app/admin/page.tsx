@@ -81,12 +81,17 @@ export default function AdminPage() {
           <p className="text-xs uppercase tracking-[0.3em] text-ember">Admin Command Center</p>
           <h1 className="font-[var(--font-space)] text-3xl">Institution, Subscription & Content Operations</h1>
           {hasAnyRole(roleNames, [ROLE_SUPER_ADMIN, ROLE_CONTENT_MANAGER]) && (
-            <Link
-              href="/content-manager"
-              className="mt-4 inline-flex rounded-full border border-dune/20 px-4 py-2 text-sm text-dune hover:border-ember hover:text-ember transition-colors"
-            >
-              Open Dedicated Content Manager
-            </Link>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <Link
+                href="/content-manager"
+                className="inline-flex rounded-full border border-dune/20 px-4 py-2 text-sm text-dune hover:border-ember hover:text-ember transition-colors"
+              >
+                Open Dedicated Content Manager
+              </Link>
+              <p className="text-sm text-dune/60">
+                Navigate directly any time at <span className="font-semibold text-ember">`/content-manager`</span>.
+              </p>
+            </div>
           )}
         </header>
 

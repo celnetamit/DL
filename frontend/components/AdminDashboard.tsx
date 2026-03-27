@@ -977,6 +977,7 @@ export default function AdminDashboard({ standalone = false }: { standalone?: bo
       </section>
       )}
 
+      {standalone && (
       <div className="grid gap-6 lg:grid-cols-[260px_1fr] min-w-0 w-full">
         <aside className="glass rounded-2xl p-6 min-w-0">
         <div>
@@ -1581,10 +1582,11 @@ export default function AdminDashboard({ standalone = false }: { standalone?: bo
                 </button>
               )}
             </div>
-          </div>
-        </div>
-      )}
-    </div>
-    </>
-  );
-}
+	          </div>
+	        </div>
+	      )}
+	      </div>
+	      )}
+	    </>
+	  );
+	}
